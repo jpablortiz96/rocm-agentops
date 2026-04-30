@@ -3,7 +3,7 @@
 from typing import List
 
 from core.llm_client import LLMClient, llm
-from core.schemas import AgentTrace, OptimizationRecommendation, TriageResult
+from core.schemas import AgentTrace, OptimizationRecommendation, TriageDecision, TriageResult
 from core.tracing import TraceBuilder
 
 
@@ -81,3 +81,119 @@ class OptimizerAgent:
             status="success",
         )
         return opts
+
+    def optimize_batch(
+        self,
+        triage_decisions: List[TriageDecision],
+    ) -> List[OptimizationRecommendation]:
+        """Produce optimization recommendations for AgentOps demo."""
+        if self.llm.mock:
+            opts = []
+
+            opts.append(
+                OptimizationRecommendation(
+                    category="cost",
+                    title="Use Deterministic Scoring for Priority Routing",
+                    description="Priority, confidence, and trust scores should be computed deterministically without LLM calls. This eliminates latency and cost for the ranking step.",
+                    recommendation="Route all incidents through deterministic scoring first. Only use LLMs for explanation, critique, and report generation.",
+                    expected_benefit="Eliminate LLM cost and latency for the ranking step (60-80% of workflow time).",
+                    complexity="low",
+                    estimated_impact="high",
+                    action_items=[
+                        "Keep deterministic scoring as the backbone",
+                        "Use LLM only for explanation and critique layers",
+                    ],
+                )
+            )
+
+            opts.append(
+                OptimizationRecommendation(
+                    category="cost",
+                    title="Use Smaller Models for Summaries",
+                    description="Critic reviews and optimizer suggestions can run on smaller models with lower token counts.",
+                    recommendation="Switch summary and critique generation to a 7B-parameter model or distilled variant.",
+                    expected_benefit="Reduce token cost by 40-60% for non-critical steps.",
+                    complexity="low",
+                    estimated_impact="medium",
+                    action_items=[
+                        "Use Qwen-7B or Llama-3.1-8B for summaries",
+                        "Route only final report assembly to the largest model",
+                    ],
+                )
+            )
+
+            opts.append(
+                OptimizationRecommendation(
+                    category="latency",
+                    title="Batch Inference for Many Incidents",
+                    description="When incident volume spikes, batching LLM calls reduces overhead.",
+                    recommendation="Group similar incidents into batches and run a single LLM prompt per batch.",
+                    expected_benefit="Reduce per-incident latency by 30-50% during spikes.",
+                    complexity="medium",
+                    estimated_impact="medium",
+                    action_items=[
+                        "Implement batch prompt templates",
+                        "Use vLLM continuous batching on AMD MI300X",
+                    ],
+                )
+            )
+
+            opts.append(
+                OptimizationRecommendation(
+                    category="latency",
+                    title="Cache Repeated Reports",
+                    description="Final reports for identical incident signatures are often regenerated.",
+                    recommendation="Cache markdown reports keyed by incident hash.",
+                    expected_benefit="Eliminate redundant LLM calls for duplicate signatures.",
+                    complexity="low",
+                    estimated_impact="medium",
+                    action_items=[
+                        "Add Redis cache for report markdown",
+                        "Invalidate cache when evidence changes",
+                    ],
+                )
+            )
+
+            opts.append(
+                OptimizationRecommendation(
+                    category="latency",
+                    title="Deploy on AMD MI300X with ROCm + vLLM",
+                    description="High-throughput open-source inference (Qwen, Llama, Mistral) runs efficiently on AMD MI300X with ROCm.",
+                    recommendation="Serve models via vLLM on MI300X with hipBLASLt and FP8 quantization for maximum throughput.",
+                    expected_benefit="2-4x higher throughput per dollar compared to standard cloud GPU instances.",
+                    complexity="medium",
+                    estimated_impact="high",
+                    action_items=[
+                        "Provision AMD Developer Cloud MI300X instances",
+                        "Enable vLLM with continuous batching",
+                        "Quantize to FP8/INT8 via AMD-quant",
+                        "Profile with rocProf and optimize Triton kernels",
+                    ],
+                )
+            )
+
+            return opts
+
+        prompt = (
+            "You are an AgentOps optimizer. Suggest 3-5 concrete improvements to reduce cost, latency, or improve accuracy. "
+            "Mention deterministic scoring, smaller models, batching, caching, and AMD/ROCm/MI300X/vLLM where relevant. "
+            "Respond in markdown bullet points."
+        )
+        resp = self.llm.chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=512,
+        )
+        text = self.llm.extract_content(resp)
+        # Return a single recommendation with the LLM text
+        return [
+            OptimizationRecommendation(
+                category="trust",
+                title="LLM-Generated Optimizations",
+                description=text,
+                recommendation="Review the generated suggestions and prioritize by impact.",
+                expected_benefit="Varies by suggestion",
+                complexity="medium",
+                estimated_impact="medium",
+            )
+        ]

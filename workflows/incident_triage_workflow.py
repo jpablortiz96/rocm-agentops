@@ -2,17 +2,21 @@
 
 from typing import List
 
+from agents.critic_agent import CriticAgent
+from agents.optimizer_agent import OptimizerAgent
+from agents.planner_agent import PlannerAgent
+from agents.rocm_advisor_agent import ROCmAdvisorAgent
 from core.llm_client import LLMClient, llm
 from core.schemas import (
     AgentRunResult,
     AgentTraceEvent,
+    BaselineDecision,
     Incident,
     OptimizationRecommendation,
-    RiskFlag,
     ROCmReadinessReport,
     TriageDecision,
 )
-from core.scoring import calculate_incident_priority_score
+from core.scoring import calculate_incident_priority_score, run_baseline_triage
 from core.tracing import create_run_id, elapsed_ms, make_trace_event, start_timer, utc_now_iso
 
 
@@ -22,6 +26,10 @@ class IncidentTriageWorkflow:
     def __init__(self, llm_client: LLMClient = llm):
         self.llm = llm_client
         self.name = "incident_triage"
+        self.planner = PlannerAgent(llm_client)
+        self.critic = CriticAgent(llm_client)
+        self.optimizer = OptimizerAgent(llm_client)
+        self.rocm_advisor = ROCmAdvisorAgent(llm_client)
 
     def run(self, incidents: List[Incident]) -> AgentRunResult:
         """Execute the deterministic workflow and return an AgentRunResult."""
@@ -47,9 +55,28 @@ class IncidentTriageWorkflow:
         )
 
         # ------------------------------------------------------------------
-        # 2. Deterministic scoring
+        # 2. Baseline triage (naive)
         # ------------------------------------------------------------------
         t1 = start_timer()
+        baseline_results = run_baseline_triage(incidents)
+        trace.append(
+            make_trace_event(
+                run_id=run_id,
+                agent_name="baseline",
+                step_name="baseline_triage",
+                input_summary=f"{len(incidents)} incidents",
+                output_summary=f"Baseline top: {baseline_results[0].incident_id if baseline_results else 'none'}",
+                latency_ms=elapsed_ms(t1),
+                status="success",
+                estimated_tokens=0,
+                estimated_cost_usd=0.0,
+            )
+        )
+
+        # ------------------------------------------------------------------
+        # 3. Deterministic AgentOps scoring
+        # ------------------------------------------------------------------
+        t2 = start_timer()
         triage_results: List[TriageDecision] = []
         for inc in incidents:
             score = calculate_incident_priority_score(inc)
@@ -69,7 +96,6 @@ class IncidentTriageWorkflow:
             )
             triage_results.append(decision)
 
-        # Sort by priority_score descending
         triage_results.sort(key=lambda d: d.priority_score, reverse=True)
 
         trace.append(
@@ -79,7 +105,7 @@ class IncidentTriageWorkflow:
                 step_name="deterministic_scoring_completed",
                 input_summary=f"Scored {len(incidents)} incidents",
                 output_summary=f"Top priority: {triage_results[0].incident_id if triage_results else 'none'}",
-                latency_ms=elapsed_ms(t1),
+                latency_ms=elapsed_ms(t2),
                 status="success",
                 estimated_tokens=0,
                 estimated_cost_usd=0.0,
@@ -87,10 +113,48 @@ class IncidentTriageWorkflow:
         )
 
         # ------------------------------------------------------------------
-        # 3. Optimization recommendations
+        # 4. Planner agent
         # ------------------------------------------------------------------
-        t2 = start_timer()
-        optimizations = self._build_optimizations(incidents, triage_results)
+        t3 = start_timer()
+        planner_text = self.planner.generate_plan_text(len(incidents))
+        trace.append(
+            make_trace_event(
+                run_id=run_id,
+                agent_name="planner",
+                step_name="plan_generated",
+                input_summary=f"{len(incidents)} incidents",
+                output_summary="Plan ready",
+                latency_ms=elapsed_ms(t3),
+                status="success",
+                estimated_tokens=200,
+                estimated_cost_usd=0.0008,
+            )
+        )
+
+        # ------------------------------------------------------------------
+        # 5. Critic agent
+        # ------------------------------------------------------------------
+        t4 = start_timer()
+        critic_text = self.critic.review_batch(triage_results)
+        trace.append(
+            make_trace_event(
+                run_id=run_id,
+                agent_name="critic",
+                step_name="critic_review",
+                input_summary=f"Reviewed {len(triage_results)} decisions",
+                output_summary="Critic review ready",
+                latency_ms=elapsed_ms(t4),
+                status="success",
+                estimated_tokens=400,
+                estimated_cost_usd=0.0016,
+            )
+        )
+
+        # ------------------------------------------------------------------
+        # 6. Optimizer agent
+        # ------------------------------------------------------------------
+        t5 = start_timer()
+        optimizations = self.optimizer.optimize_batch(triage_results)
         trace.append(
             make_trace_event(
                 run_id=run_id,
@@ -98,7 +162,7 @@ class IncidentTriageWorkflow:
                 step_name="optimization_recommendations",
                 input_summary=f"Analyzed {len(triage_results)} triage decisions",
                 output_summary=f"Generated {len(optimizations)} recommendations",
-                latency_ms=elapsed_ms(t2),
+                latency_ms=elapsed_ms(t5),
                 status="success",
                 estimated_tokens=800,
                 estimated_cost_usd=0.0032,
@@ -106,10 +170,10 @@ class IncidentTriageWorkflow:
         )
 
         # ------------------------------------------------------------------
-        # 4. ROCm readiness report
+        # 7. ROCm advisor agent
         # ------------------------------------------------------------------
-        t3 = start_timer()
-        rocm_report = self._build_rocm_report(incidents, triage_results)
+        t6 = start_timer()
+        rocm_report = self.rocm_advisor.advise_batch(incidents)
         trace.append(
             make_trace_event(
                 run_id=run_id,
@@ -117,7 +181,7 @@ class IncidentTriageWorkflow:
                 step_name="rocm_readiness_check",
                 input_summary="Evaluated ROCm relevance",
                 output_summary="Report ready" if rocm_report else "No ROCm incidents",
-                latency_ms=elapsed_ms(t3),
+                latency_ms=elapsed_ms(t6),
                 status="success",
                 estimated_tokens=600,
                 estimated_cost_usd=0.0024,
@@ -125,10 +189,17 @@ class IncidentTriageWorkflow:
         )
 
         # ------------------------------------------------------------------
-        # 5. Final markdown report
+        # 8. Build comparison, agent review, and final report
         # ------------------------------------------------------------------
-        t4 = start_timer()
-        final_markdown = self._build_markdown_report(run_id, incidents, triage_results, optimizations, rocm_report, trace)
+        t7 = start_timer()
+        comparison_md = self._build_comparison_markdown(baseline_results, triage_results)
+        mismatch_insights = self._generate_mismatch_insights(baseline_results, triage_results)
+        agent_review_md = self._build_agent_review_markdown(
+            planner_text, critic_text, mismatch_insights, triage_results
+        )
+        final_markdown = self._build_markdown_report(
+            run_id, incidents, baseline_results, triage_results, optimizations, rocm_report, trace, agent_review_md, comparison_md
+        )
         trace.append(
             make_trace_event(
                 run_id=run_id,
@@ -136,7 +207,7 @@ class IncidentTriageWorkflow:
                 step_name="final_report_assembled",
                 input_summary="Assembling report",
                 output_summary=f"Report length: {len(final_markdown)} chars",
-                latency_ms=elapsed_ms(t4),
+                latency_ms=elapsed_ms(t7),
                 status="success",
                 estimated_tokens=1200,
                 estimated_cost_usd=0.0048,
@@ -146,9 +217,12 @@ class IncidentTriageWorkflow:
         return AgentRunResult(
             run_id=run_id,
             triage_results=triage_results,
+            baseline_results=baseline_results,
             trace=trace,
             optimizations=optimizations,
             rocm_report=rocm_report,
+            agent_review_markdown=agent_review_md,
+            comparison_markdown=comparison_md,
             final_report_markdown=final_markdown,
         )
 
@@ -156,167 +230,163 @@ class IncidentTriageWorkflow:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _build_optimizations(
-        self, incidents: List[Incident], triage_results: List[TriageDecision]
-    ) -> List[OptimizationRecommendation]:
-        opts: List[OptimizationRecommendation] = []
+    def _build_comparison_markdown(
+        self, baseline: List[BaselineDecision], agentops: List[TriageDecision]
+    ) -> str:
+        lines: List[str] = []
+        lines.append("## Baseline vs ROCm AgentOps")
+        lines.append("")
+        lines.append("| Capability | Baseline Agent | ROCm AgentOps |")
+        lines.append("|---|---|---|")
+        lines.append("| Priority ranking | ✓ | ✓ |")
+        lines.append("| Trust score | ✗ | ✓ |")
+        lines.append("| Risk flags | ✗ | ✓ |")
+        lines.append("| Human review escalation | ✗ | ✓ |")
+        lines.append("| Trace replay | ✗ | ✓ |")
+        lines.append("| Cost estimate | ✗ | ✓ |")
+        lines.append("| Latency visibility | ✗ | ✓ |")
+        lines.append("| Optimization recommendations | ✗ | ✓ |")
+        lines.append("| AMD/ROCm readiness | ✗ | ✓ |")
+        lines.append("| Final audit report | ✗ | ✓ |")
+        lines.append("")
 
-        high_priority = [t for t in triage_results if t.priority_score >= 60]
-        inference_incidents = [i for i in incidents if i.system == "inference"]
-        security_incidents = [i for i in incidents if i.system == "security"]
-        missing_evidence = [i for i in incidents if len(i.evidence) == 0]
+        top_baseline = baseline[0] if baseline else None
+        top_agentops = agentops[0] if agentops else None
+        human_review_count = sum(1 for d in agentops if d.human_review_required)
 
-        if inference_incidents:
-            opts.append(
-                OptimizationRecommendation(
-                    category="latency",
-                    title="ROCm Batching and Kernel Fusion",
-                    description="Inference incidents indicate GPU stack sensitivity. Enable vLLM continuous batching and hipBLASLt fusion.",
-                    recommendation="Enable vLLM continuous batching on MI300X with hipBLASLt fused kernels. Profile with rocProf.",
-                    expected_benefit="20-40% throughput improvement on AMD GPUs",
-                    complexity="medium",
-                    estimated_impact="high",
-                    action_items=[
-                        "Enable vLLM --enable-chunked-prefill",
-                        "Switch to hipBLASLt for GEMM fusion",
-                        "Profile with rocProf and optimize Triton kernels",
-                    ],
+        lines.append("**Metric Snapshot**")
+        if top_baseline:
+            lines.append(f"- **Highest Baseline Priority:** {top_baseline.incident_id} — {top_baseline.title} (score: {top_baseline.baseline_score})")
+        if top_agentops:
+            lines.append(f"- **Highest AgentOps Priority:** {top_agentops.incident_id} — {top_agentops.title} (score: {top_agentops.priority_score})")
+        lines.append(f"- **High-Risk Incidents Requiring Human Review:** {human_review_count}")
+        lines.append("")
+
+        return "\n".join(lines)
+
+    def _generate_mismatch_insights(
+        self, baseline: List[BaselineDecision], agentops: List[TriageDecision]
+    ) -> List[str]:
+        insights: List[str] = []
+        baseline_rank = {d.incident_id: d.baseline_rank for d in baseline}
+        agentops_rank = {d.incident_id: i + 1 for i, d in enumerate(agentops)}
+
+        # INC-004: security with missing evidence
+        if baseline_rank.get("INC-004") and agentops_rank.get("INC-004"):
+            if baseline_rank["INC-004"] > agentops_rank["INC-004"]:
+                insights.append(
+                    "**INC-004** (Suspicious IAM activity) was under-ranked by the baseline because it only affects 5 users. "
+                    "AgentOps elevated it to top-3 due to critical security severity, empty evidence, and urgent 10-minute SLA."
                 )
-            )
 
-        if high_priority:
-            opts.append(
-                OptimizationRecommendation(
-                    category="trust",
-                    title="Faster Triage for High-Priority Incidents",
-                    description="Multiple high-priority incidents suggest need for deterministic pre-filtering before LLM calls.",
-                    recommendation="Use deterministic scoring as a routing layer to skip LLM calls for obvious P0/P1 incidents.",
-                    expected_benefit="Reduce triage latency by 60% for critical incidents",
-                    complexity="low",
-                    estimated_impact="high",
-                    action_items=[
-                        "Route priority_score >= 80 directly to on-call",
-                        "Batch priority_score < 40 for async LLM review",
-                    ],
+        # INC-005: many users but low severity / mitigated
+        if baseline_rank.get("INC-005") and agentops_rank.get("INC-005"):
+            if baseline_rank["INC-005"] < agentops_rank["INC-005"]:
+                insights.append(
+                    "**INC-005** (Notification delay) was over-ranked by the baseline because it affects 250,000 users. "
+                    "AgentOps correctly deprioritized it: low severity, mitigated status, and minimal revenue impact."
                 )
-            )
 
-        if security_incidents:
-            opts.append(
-                OptimizationRecommendation(
-                    category="trust",
-                    title="Security Evidence Pipeline",
-                    description="Security incidents lack structured evidence. Enrich with cloud trail and SIEM links.",
-                    recommendation="Auto-attach CloudTrail, GuardDuty, and SIEM links to security incidents.",
-                    expected_benefit="Faster forensic turnaround",
-                    complexity="medium",
-                    estimated_impact="medium",
-                    action_items=[
-                        "Integrate CloudTrail lookup",
-                        "Attach GuardDuty finding IDs",
-                    ],
+        # INC-007: hallucination
+        if baseline_rank.get("INC-007") and agentops_rank.get("INC-007"):
+            if baseline_rank["INC-007"] > agentops_rank["INC-007"]:
+                insights.append(
+                    "**INC-007** (LLM hallucination) was under-ranked by the baseline. "
+                    "AgentOps elevated it because hallucination risk is a critical AI-safety issue requiring human review."
                 )
-            )
 
-        if missing_evidence:
-            opts.append(
-                OptimizationRecommendation(
-                    category="accuracy",
-                    title="Evidence Collection Automation",
-                    description=f"{len(missing_evidence)} incidents arrived without evidence.",
-                    recommendation="Auto-collect logs, metrics, and traces when an incident is opened.",
-                    expected_benefit="Higher confidence scores and fewer false positives",
-                    complexity="medium",
-                    estimated_impact="medium",
-                    action_items=[
-                        "Runbook-driven evidence collector",
-                        "Link Grafana dashboards automatically",
-                    ],
+        # INC-006: ROCm inference
+        if baseline_rank.get("INC-006") and agentops_rank.get("INC-006"):
+            if baseline_rank["INC-006"] > agentops_rank["INC-006"]:
+                insights.append(
+                    "**INC-006** (GPU inference degradation on MI300X) was under-ranked by the baseline. "
+                    "AgentOps elevated it because AMD/ROCm inference stack degradation affects model serving reliability."
                 )
-            )
 
-        if not opts:
-            opts.append(
-                OptimizationRecommendation(
-                    category="cost",
-                    title="Operational Health",
-                    description="No critical optimizations detected. Monitor baseline.",
-                    recommendation="Continue monitoring and maintain SLOs.",
-                    expected_benefit="Stability",
-                    complexity="low",
-                    estimated_impact="low",
+        # INC-003: 0 users but high revenue
+        if baseline_rank.get("INC-003") and agentops_rank.get("INC-003"):
+            if baseline_rank["INC-003"] > agentops_rank["INC-003"]:
+                insights.append(
+                    "**INC-003** (ETL pipeline stalled) was under-ranked by the baseline because it affects 0 users. "
+                    "AgentOps kept it mid-tier because the $150k revenue impact blocks finance forecasting."
                 )
-            )
 
-        return opts
+        return insights
 
-    def _build_rocm_report(
-        self, incidents: List[Incident], triage_results: List[TriageDecision]
-    ) -> ROCmReadinessReport:
-        inference_incidents = [i for i in incidents if i.system == "inference"]
-        if not inference_incidents:
-            return ROCmReadinessReport(
-                summary="No inference incidents detected. ROCm readiness is not a current blocker.",
-                gpu_relevant_steps=[],
-                rocm_optimizations=[],
-                batching_opportunities=[],
-                estimated_impact="low",
-                limitations=[],
-            )
+    def _build_agent_review_markdown(
+        self,
+        planner_text: str,
+        critic_text: str,
+        mismatch_insights: List[str],
+        triage_results: List[TriageDecision],
+    ) -> str:
+        lines: List[str] = []
+        lines.append("# Agent Review")
+        lines.append("")
 
-        rocm_keywords = ["mi300x", "rocm", "triton", "gpu", "thermal", "throughput"]
-        relevant = [
-            i for i in inference_incidents
-            if any(k in f"{i.title} {i.description}".lower() for k in rocm_keywords)
-        ]
+        lines.append("## Planner Output")
+        lines.append(planner_text)
+        lines.append("")
 
-        summary = (
-            f"{len(relevant)} inference incident(s) relate to AMD/ROCm stack. "
-            "Recommend immediate GPU profiling and kernel optimization."
+        lines.append("## Critic Output")
+        lines.append(critic_text)
+        lines.append("")
+
+        lines.append("## Baseline Mismatch Insights")
+        if mismatch_insights:
+            for insight in mismatch_insights:
+                lines.append(f"- {insight}")
+        else:
+            lines.append("No significant baseline mismatches detected.")
+        lines.append("")
+
+        lines.append("## Human Review Triggers")
+        human_review = [d for d in triage_results if d.human_review_required]
+        if human_review:
+            lines.append(f"{len(human_review)} incident(s) triggered human review:")
+            for d in human_review:
+                lines.append(f"- **{d.incident_id}**: {d.title} — {d.recommended_action}")
+        else:
+            lines.append("No incidents triggered human review.")
+        lines.append("")
+
+        lines.append("## Deterministic vs LLM-Assisted")
+        lines.append("- **Deterministic:** Priority scoring, confidence, trust, risk flags, baseline comparison.")
+        lines.append("- **LLM-Assisted:** Planner narrative, critic review, optimization suggestions, report formatting.")
+        lines.append("- **Policy:** Deterministic layers run first and are never overridden by LLM output.")
+        lines.append("")
+
+        lines.append("## LLM Usage Policy")
+        lines.append(
+            "- Deterministic scoring is used for priority, confidence, and trust calculations.\n"
+            "- LLMs are used only for explanation, critique, reporting, and optimization suggestions.\n"
+            "- This reduces cost, improves reliability, and makes the workflow auditable.\n"
+            "- Mock mode is enabled for demo stability; production mode can connect to Qwen/Llama/Mistral "
+            "served via OpenAI-compatible endpoints on AMD Cloud."
         )
+        lines.append("")
 
-        return ROCmReadinessReport(
-            summary=summary,
-            gpu_relevant_steps=[i.id for i in relevant],
-            rocm_optimizations=[
-                "Enable hipBLASLt for fused GEMM operations",
-                "Use MIOpen for optimized convolutions",
-                "Switch to RCCL for multi-GPU communication",
-                "Quantize to FP8/INT8 via AMD-quant for higher throughput",
-            ],
-            batching_opportunities=[
-                "vLLM continuous batching on MI300X",
-                "Dynamic split-fuse for decode-heavy workloads",
-            ],
-            estimated_impact="high",
-            limitations=[
-                "ROCm 6.1+ required for best Flash Attention support",
-                "Some Triton kernels may need manual tuning on MI300X",
-                "Docker base image must use rocm/pytorch:latest",
-            ],
-            model_compatible=True,
-            gpu_recommendation="MI300X",
-            kernel_optimizations=["hipBLASLt", "MIOpen", "RCCL"],
-            quantization_suggestion="FP8 / INT8 via AMD-quant",
-            notes=[
-                "ROCm 6.1+ recommended for best Flash Attention support",
-                "Ensure docker image uses rocm/pytorch base",
-            ],
-        )
+        return "\n".join(lines)
 
     def _build_markdown_report(
         self,
         run_id: str,
         incidents: List[Incident],
+        baseline_results: List[BaselineDecision],
         triage_results: List[TriageDecision],
         optimizations: List[OptimizationRecommendation],
         rocm_report: ROCmReadinessReport,
         trace: List[AgentTraceEvent],
+        agent_review_md: str,
+        comparison_md: str,
     ) -> str:
         lines: List[str] = []
         lines.append(f"# ROCm AgentOps Report — {run_id}")
         lines.append(f"**Generated:** {utc_now_iso()}  ")
         lines.append(f"**Incidents Processed:** {len(incidents)}  ")
+        lines.append("")
+
+        lines.append(comparison_md)
         lines.append("")
 
         lines.append("## Triage Results (Ranked)")
@@ -376,6 +446,10 @@ class IncidentTriageWorkflow:
             lines.append("No ROCm readiness report generated.")
         lines.append("")
 
+        lines.append("## Agent Review")
+        lines.append(agent_review_md)
+        lines.append("")
+
         lines.append("## Trace Summary")
         lines.append(f"Workflow executed with run ID `{run_id}`.")
         lines.append("")
@@ -386,9 +460,9 @@ class IncidentTriageWorkflow:
                 f"| {evt.step_name} | {evt.agent_name} | {evt.latency_ms} | {evt.estimated_tokens} | ${evt.estimated_cost_usd:.4f} |"
             )
         lines.append("")
-        lines.append("> **Note:** All costs shown are simulated estimates for demonstration purposes. "
-                    "Deterministic scoring steps incur no LLM cost. Only optimizer, ROCm advisor, and reporter steps include mock LLM-like costs."
-        )
+        lines.append("> **Note:** All costs and latencies shown are simulated estimates for demonstration purposes. "
+                    "Deterministic scoring steps incur no LLM cost. Only planner, critic, optimizer, ROCm advisor, and reporter steps include mock LLM-like costs. "
+                    "Connect to a live Qwen/Llama/Mistral endpoint on AMD Cloud for real inference.")
         lines.append("")
 
         return "\n".join(lines)

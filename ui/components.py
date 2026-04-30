@@ -10,6 +10,7 @@ from core.schemas import (
     AgentRunResult,
     AgentTrace,
     AgentTraceEvent,
+    BaselineDecision,
     Incident,
     OptimizationRecommendation,
     ROCmReadinessReport,
@@ -108,6 +109,69 @@ def render_triage_results(results: List[TriageDecision]):
                 st.write("**Risk Flags:**")
                 for f in r.risk_flags:
                     st.write(f"- **{f.label}** ({f.severity}): {f.explanation}")
+
+
+def render_baseline_comparison(baseline: List[BaselineDecision], agentops: List[TriageDecision]):
+    st.subheader("⚖️ Baseline vs ROCm AgentOps")
+    if not baseline or not agentops:
+        st.info("No comparison data available.")
+        return
+
+    # Comparison table
+    data = {
+        "Capability": [
+            "Priority ranking",
+            "Trust score",
+            "Risk flags",
+            "Human review escalation",
+            "Trace replay",
+            "Cost estimate",
+            "Latency visibility",
+            "Optimization recommendations",
+            "AMD/ROCm readiness",
+            "Final audit report",
+        ],
+        "Baseline Agent": ["✓", "✗", "✗", "✗", "✗", "✗", "✗", "✗", "✗", "✗"],
+        "ROCm AgentOps": ["✓", "✓", "✓", "✓", "✓", "✓", "✓", "✓", "✓", "✓"],
+    }
+    df_cmp = pd.DataFrame(data)
+    st.dataframe(df_cmp, use_container_width=True, hide_index=True)
+
+    # Metric cards
+    top_baseline = baseline[0]
+    top_agentops = agentops[0]
+    human_review_count = sum(1 for d in agentops if d.human_review_required)
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Highest Baseline Priority", f"{top_baseline.incident_id}", f"score {top_baseline.baseline_score}")
+    col2.metric("Highest AgentOps Priority", f"{top_agentops.incident_id}", f"score {top_agentops.priority_score}")
+    col3.metric("Human Review Required", human_review_count)
+
+    # Side-by-side ranking table
+    baseline_map = {d.incident_id: d for d in baseline}
+    agentops_map = {d.incident_id: i + 1 for i, d in enumerate(agentops)}
+
+    rows = []
+    for d in baseline:
+        aops_rank = agentops_map.get(d.incident_id, "—")
+        rows.append({
+            "incident_id": d.incident_id,
+            "title": d.title,
+            "baseline_rank": d.baseline_rank,
+            "agentops_rank": aops_rank,
+            "delta": d.baseline_rank - aops_rank if isinstance(aops_rank, int) else "—",
+        })
+    df_rank = pd.DataFrame(rows)
+    st.write("**Ranking Comparison (negative delta = AgentOps elevated the incident)**")
+    st.dataframe(df_rank, use_container_width=True, hide_index=True)
+
+
+def render_agent_review(markdown_text: str):
+    st.subheader("🧑‍⚖️ Agent Review")
+    if not markdown_text:
+        st.info("No agent review available.")
+        return
+    st.markdown(markdown_text)
 
 
 def render_trace(trace: List[AgentTraceEvent]):

@@ -8,6 +8,8 @@ import streamlit as st
 from core.config import config
 from core.schemas import Incident
 from ui.components import (
+    render_agent_review,
+    render_baseline_comparison,
     render_final_report,
     render_header,
     render_incidents,
@@ -92,12 +94,17 @@ def main():
 
         st.success("Workflow complete!")
 
-        tab_triage, tab_trace, tab_opt, tab_rocm, tab_report = st.tabs(
-            ["Triage", "Trace", "Optimizations", "ROCm Readiness", "Final Report"]
+        # New tab order: Triage, Agent Review, Trace, Optimizations, ROCm Readiness, Final Report
+        tab_triage, tab_agent_review, tab_trace, tab_opt, tab_rocm, tab_report = st.tabs(
+            ["Triage", "Agent Review", "Trace", "Optimizations", "ROCm Readiness", "Final Report"]
         )
 
         with tab_triage:
+            render_baseline_comparison(report.baseline_results, report.triage_results)
             render_triage_results(report.triage_results)
+
+        with tab_agent_review:
+            render_agent_review(report.agent_review_markdown)
 
         with tab_trace:
             if report.trace:

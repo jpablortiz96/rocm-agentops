@@ -3,7 +3,7 @@
 import hashlib
 from typing import Dict, List
 
-from core.schemas import Incident, RiskFlag, TriageResult
+from core.schemas import BaselineDecision, Incident, RiskFlag, TriageResult
 
 
 # ---------------------------------------------------------------------------
@@ -345,3 +345,28 @@ def calculate_incident_priority_score(incident: Incident) -> Dict:
         "human_review_required": human_review,
         "recommended_action": action,
     }
+
+
+
+def run_baseline_triage(incidents: List[Incident]) -> List[BaselineDecision]:
+    """Naive baseline triage using only severity and affected_users."""
+    severity_weights = {"critical": 100, "high": 75, "medium": 50, "low": 25}
+    scored = []
+    for inc in incidents:
+        score = severity_weights.get(inc.severity_hint.value, 0) + (inc.affected_users / 1000.0)
+        scored.append((inc, score))
+    scored.sort(key=lambda x: x[1], reverse=True)
+    results: List[BaselineDecision] = []
+    for rank, (inc, score) in enumerate(scored, start=1):
+        results.append(
+            BaselineDecision(
+                incident_id=inc.id,
+                title=inc.title,
+                system=inc.system,
+                severity_hint=inc.severity_hint.value,
+                affected_users=inc.affected_users,
+                baseline_score=round(score, 1),
+                baseline_rank=rank,
+            )
+        )
+    return results

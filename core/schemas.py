@@ -58,6 +58,16 @@ class TriageDecision(BaseModel):
     human_review_required: bool = False
 
 
+class BaselineDecision(BaseModel):
+    incident_id: str
+    title: str
+    system: str
+    severity_hint: str
+    affected_users: int = 0
+    baseline_score: float = 0.0
+    baseline_rank: int = 0
+
+
 class AgentTraceEvent(BaseModel):
     run_id: str
     timestamp: str
@@ -135,9 +145,12 @@ class ROCmReadinessReport(BaseModel):
 class AgentRunResult(BaseModel):
     run_id: str
     triage_results: List[TriageDecision] = Field(default_factory=list)
+    baseline_results: List[BaselineDecision] = Field(default_factory=list)
     trace: List[AgentTraceEvent] = Field(default_factory=list)
     optimizations: List[OptimizationRecommendation] = Field(default_factory=list)
     rocm_report: Optional[ROCmReadinessReport] = None
+    agent_review_markdown: str = ""
+    comparison_markdown: str = ""
     final_report_markdown: str = ""
 
 
