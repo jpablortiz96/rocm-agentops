@@ -104,7 +104,7 @@ def main():
             render_triage_results(report.triage_results)
 
         with tab_agent_review:
-            render_agent_review(report.agent_review_markdown)
+            render_agent_review(report.agent_review_markdown, report.llm_runtime_info)
 
         with tab_trace:
             if report.trace:

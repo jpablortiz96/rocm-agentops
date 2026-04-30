@@ -152,6 +152,7 @@ class AgentRunResult(BaseModel):
     agent_review_markdown: str = ""
     comparison_markdown: str = ""
     final_report_markdown: str = ""
+    llm_runtime_info: Dict[str, Any] = Field(default_factory=dict)
 
 
 class FinalReport(BaseModel):

@@ -10,7 +10,7 @@ from core.config import config
 
 
 class LLMClient:
-    """Lightweight OpenAI-compatible LLM client."""
+    """Lightweight OpenAI-compatible LLM client with safe fallback."""
 
     def __init__(
         self,
@@ -20,21 +20,59 @@ class LLMClient:
         mock: Optional[bool] = None,
     ):
         self.api_key = api_key or config.LLM_API_KEY
+        # Normalize base_url: strip trailing slashes so /chat/completions is clean.
         self.base_url = (base_url or config.LLM_BASE_URL).rstrip("/")
         self.model = model or config.LLM_MODEL
         self.mock = mock if mock is not None else config.is_mock()
         self.timeout = config.LLM_TIMEOUT
 
-    def chat_completion(
+    def chat(
         self,
-        messages: List[Dict[str, str]],
-        temperature: float = 0.3,
-        max_tokens: int = 512,
+        system_prompt: str,
+        user_prompt: str,
+        fallback: str = "",
     ) -> Dict[str, Any]:
-        """Call chat.completions or return mock response."""
-        if self.mock:
-            return self._mock_response(messages)
+        """Call chat.completions or return mock/fallback response.
 
+        Returns a dict with:
+        - content: str
+        - used_llm: bool
+        - used_mock: bool
+        - error: str | None
+        - model: str
+        - estimated_input_tokens: int
+        - estimated_output_tokens: int
+        - estimated_cost_usd: float
+        """
+        if self.mock:
+            content = fallback or self._mock_content(user_prompt)
+            return {
+                "content": content,
+                "used_llm": False,
+                "used_mock": True,
+                "error": None,
+                "model": self.model,
+                "estimated_input_tokens": (len(system_prompt) + len(user_prompt)) // 4,
+                "estimated_output_tokens": len(content) // 4,
+                "estimated_cost_usd": 0.0,
+            }
+
+        if not self.api_key:
+            content = fallback or self._mock_content(user_prompt)
+            return {
+                "content": content,
+                "used_llm": False,
+                "used_mock": True,
+                "error": "API key missing",
+                "model": self.model,
+                "estimated_input_tokens": 0,
+                "estimated_output_tokens": 0,
+                "estimated_cost_usd": 0.0,
+            }
+
+        # Build URL: base_url may already end with /v1; avoid double /v1/v1.
+        # The caller is responsible for providing a base_url that includes the
+        # API version path if their endpoint requires it (e.g. https://api.openai.com/v1).
         url = f"{self.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -42,62 +80,123 @@ class LLMClient:
         }
         payload = {
             "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.2,
+            "max_tokens": 700,
         }
 
         try:
             resp = requests.post(url, headers=headers, json=payload, timeout=self.timeout)
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            content = self._extract_content(data) or fallback or self._mock_content(user_prompt)
+            estimated_input_tokens = (len(system_prompt) + len(user_prompt)) // 4
+            estimated_output_tokens = len(content) // 4
+            # Mock cost estimate: $2 per 1M tokens (clearly marked as estimated).
+            estimated_cost_usd = (estimated_input_tokens + estimated_output_tokens) * 0.000002
+            return {
+                "content": content,
+                "used_llm": True,
+                "used_mock": False,
+                "error": None,
+                "model": self.model,
+                "estimated_input_tokens": estimated_input_tokens,
+                "estimated_output_tokens": estimated_output_tokens,
+                "estimated_cost_usd": estimated_cost_usd,
+            }
         except requests.RequestException as exc:
-            # Graceful degradation to mock on failure
-            return self._mock_response(messages, error_note=str(exc))
+            content = fallback or self._mock_content(user_prompt)
+            return {
+                "content": content,
+                "used_llm": False,
+                "used_mock": True,
+                "error": str(exc),
+                "model": self.model,
+                "estimated_input_tokens": 0,
+                "estimated_output_tokens": 0,
+                "estimated_cost_usd": 0.0,
+            }
 
-    def _mock_response(
-        self, messages: List[Dict[str, str]], error_note: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """Deterministic mock response for demos and fallback."""
-        user_msg = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
-        content = self._generate_mock_content(user_msg)
-        if error_note:
-            content += f"\n\n(Mock fallback due to: {error_note})"
-
-        return {
-            "id": f"mock-{uuid.uuid4().hex[:8]}",
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": self.model,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": content},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        }
-
-    def _generate_mock_content(self, user_msg: str) -> str:
-        """Simple rule-based mock content derived from prompt."""
-        lowered = user_msg.lower()
-        if "triage" in lowered or "priority" in lowered:
-            return "Priority: HIGH. Reasoning: Service degradation detected. Recommend immediate rollback and investigation."
-        if "optimize" in lowered or "improve" in lowered:
-            return "Optimization: Use FP8 quantization and enable Flash Attention for ROCm."
-        if "rocm" in lowered or "amd" in lowered:
-            return "ROCm Readiness: Compatible. Recommended GPU: MI300X. Enable hipBLASLt for matmul acceleration."
+    def _mock_content(self, user_prompt: str) -> str:
+        """Simple rule-based mock content derived from prompt keywords."""
+        lowered = user_prompt.lower()
+        if "plan" in lowered or "execution" in lowered:
+            return (
+                "1. Validate incident schema.\n"
+                "2. Compute deterministic priority scores.\n"
+                "3. Detect risk flags.\n"
+                "4. Compare against baseline.\n"
+                "5. Generate critic review.\n"
+                "6. Produce ROCm readiness report.\n"
+                "7. Assemble final audit report."
+            )
         if "critic" in lowered or "review" in lowered:
-            return "Review: Confidence is acceptable. Add more metadata to improve traceability."
+            return "Review complete. Confidence is acceptable. Add more metadata to improve traceability."
+        if "optimize" in lowered or "improvement" in lowered:
+            return (
+                "- Use deterministic scoring for priority routing.\n"
+                "- Use smaller models (7B) for summaries.\n"
+                "- Batch inference for many incidents.\n"
+                "- Cache repeated reports.\n"
+                "- Deploy on AMD MI300X with ROCm + vLLM."
+            )
+        if "rocm" in lowered or "amd" in lowered or "gpu" in lowered:
+            return (
+                "- Enable hipBLASLt for fused GEMM on MI300X.\n"
+                "- Use MIOpen for optimized convolutions.\n"
+                "- Switch to RCCL for multi-GPU communication.\n"
+                "- Quantize to FP8/INT8 via AMD-quant.\n"
+                "- Use vLLM continuous batching on MI300X."
+            )
         return "Acknowledged. Proceed with standard operating procedures."
 
-    def extract_content(self, response: Dict[str, Any]) -> str:
+    def _extract_content(self, response: Dict[str, Any]) -> Optional[str]:
         """Safely extract assistant text from API response."""
         try:
             return response["choices"][0]["message"]["content"]
-        except (KeyError, IndexError):
-            return ""
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    # ------------------------------------------------------------------
+    # Legacy interface (kept for backward compatibility)
+    # ------------------------------------------------------------------
+
+    def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.3,
+        max_tokens: int = 512,
+    ) -> Dict[str, Any]:
+        """Deprecated: use chat() instead."""
+        system_msg = next((m["content"] for m in messages if m.get("role") == "system"), "")
+        user_msg = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+        result = self.chat(system_msg, user_msg)
+        # Re-package into old response format
+        return {
+            "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": result["model"],
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": result["content"]},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": result["estimated_input_tokens"],
+                "completion_tokens": result["estimated_output_tokens"],
+                "total_tokens": result["estimated_input_tokens"] + result["estimated_output_tokens"],
+            },
+        }
+
+    def extract_content(self, response: Dict[str, Any]) -> str:
+        """Deprecated: use chat()['content'] instead."""
+        return self._extract_content(response) or ""
 
 
 # Singleton convenience

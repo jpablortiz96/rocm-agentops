@@ -1,6 +1,6 @@
 """Reusable Streamlit UI components."""
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import plotly.express as px
@@ -166,8 +166,22 @@ def render_baseline_comparison(baseline: List[BaselineDecision], agentops: List[
     st.dataframe(df_rank, use_container_width=True, hide_index=True)
 
 
-def render_agent_review(markdown_text: str):
+def render_agent_review(markdown_text: str, llm_info: Optional[Dict[str, Any]] = None):
     st.subheader("🧑‍⚖️ Agent Review")
+    if llm_info:
+        with st.container(border=True):
+            st.markdown("**🔌 LLM Runtime Status**")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write(f"**Mock Mode:** {'ON' if llm_info.get('mock_mode') else 'OFF'}")
+                st.write(f"**Model:** {llm_info.get('model', 'N/A')}")
+            with col2:
+                st.write(f"**Base URL:** {llm_info.get('base_url', 'N/A')}")
+                st.write(f"**Narrative Mode:** {llm_info.get('narrative_mode', 'N/A')}")
+            if llm_info.get("errors"):
+                st.warning("LLM errors detected (fallback used):\n- " + "\n- ".join(llm_info["errors"]))
+            else:
+                st.caption("No LLM errors. All agents returned successfully.")
     if not markdown_text:
         st.info("No agent review available.")
         return

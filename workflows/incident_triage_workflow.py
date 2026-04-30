@@ -35,6 +35,9 @@ class IncidentTriageWorkflow:
         """Execute the deterministic workflow and return an AgentRunResult."""
         run_id = create_run_id()
         trace: List[AgentTraceEvent] = []
+        llm_errors: List[str] = []
+        any_llm_used = False
+        any_mock_used = False
 
         # ------------------------------------------------------------------
         # 1. Workflow started
@@ -117,17 +120,31 @@ class IncidentTriageWorkflow:
         # ------------------------------------------------------------------
         t3 = start_timer()
         planner_text = self.planner.generate_plan_text(len(incidents))
+        planner_meta = self.planner.last_llm_meta or {}
+        if planner_meta.get("error"):
+            llm_errors.append(f"Planner: {planner_meta['error']}")
+        if planner_meta.get("used_llm"):
+            any_llm_used = True
+        if planner_meta.get("used_mock"):
+            any_mock_used = True
+
         trace.append(
             make_trace_event(
                 run_id=run_id,
                 agent_name="planner",
                 step_name="plan_generated",
                 input_summary=f"{len(incidents)} incidents",
-                output_summary="Plan ready",
+                output_summary=(
+                    "LLM narrative generated"
+                    if planner_meta.get("used_llm")
+                    else "Mock/fallback narrative used"
+                    + (f" (error: {planner_meta['error']})" if planner_meta.get("error") else "")
+                ),
                 latency_ms=elapsed_ms(t3),
                 status="success",
-                estimated_tokens=200,
-                estimated_cost_usd=0.0008,
+                estimated_tokens=planner_meta.get("estimated_input_tokens", 0)
+                + planner_meta.get("estimated_output_tokens", 0),
+                estimated_cost_usd=planner_meta.get("estimated_cost_usd", 0.0),
             )
         )
 
@@ -136,17 +153,31 @@ class IncidentTriageWorkflow:
         # ------------------------------------------------------------------
         t4 = start_timer()
         critic_text = self.critic.review_batch(triage_results)
+        critic_meta = self.critic.last_llm_meta or {}
+        if critic_meta.get("error"):
+            llm_errors.append(f"Critic: {critic_meta['error']}")
+        if critic_meta.get("used_llm"):
+            any_llm_used = True
+        if critic_meta.get("used_mock"):
+            any_mock_used = True
+
         trace.append(
             make_trace_event(
                 run_id=run_id,
                 agent_name="critic",
                 step_name="critic_review",
                 input_summary=f"Reviewed {len(triage_results)} decisions",
-                output_summary="Critic review ready",
+                output_summary=(
+                    "LLM narrative generated"
+                    if critic_meta.get("used_llm")
+                    else "Mock/fallback narrative used"
+                    + (f" (error: {critic_meta['error']})" if critic_meta.get("error") else "")
+                ),
                 latency_ms=elapsed_ms(t4),
                 status="success",
-                estimated_tokens=400,
-                estimated_cost_usd=0.0016,
+                estimated_tokens=critic_meta.get("estimated_input_tokens", 0)
+                + critic_meta.get("estimated_output_tokens", 0),
+                estimated_cost_usd=critic_meta.get("estimated_cost_usd", 0.0),
             )
         )
 
@@ -155,17 +186,31 @@ class IncidentTriageWorkflow:
         # ------------------------------------------------------------------
         t5 = start_timer()
         optimizations = self.optimizer.optimize_batch(triage_results)
+        optimizer_meta = self.optimizer.last_llm_meta or {}
+        if optimizer_meta.get("error"):
+            llm_errors.append(f"Optimizer: {optimizer_meta['error']}")
+        if optimizer_meta.get("used_llm"):
+            any_llm_used = True
+        if optimizer_meta.get("used_mock"):
+            any_mock_used = True
+
         trace.append(
             make_trace_event(
                 run_id=run_id,
                 agent_name="optimizer",
                 step_name="optimization_recommendations",
                 input_summary=f"Analyzed {len(triage_results)} triage decisions",
-                output_summary=f"Generated {len(optimizations)} recommendations",
+                output_summary=(
+                    "LLM narrative generated"
+                    if optimizer_meta.get("used_llm")
+                    else "Mock/fallback narrative used"
+                    + (f" (error: {optimizer_meta['error']})" if optimizer_meta.get("error") else "")
+                ),
                 latency_ms=elapsed_ms(t5),
                 status="success",
-                estimated_tokens=800,
-                estimated_cost_usd=0.0032,
+                estimated_tokens=optimizer_meta.get("estimated_input_tokens", 0)
+                + optimizer_meta.get("estimated_output_tokens", 0),
+                estimated_cost_usd=optimizer_meta.get("estimated_cost_usd", 0.0),
             )
         )
 
@@ -174,17 +219,31 @@ class IncidentTriageWorkflow:
         # ------------------------------------------------------------------
         t6 = start_timer()
         rocm_report = self.rocm_advisor.advise_batch(incidents)
+        rocm_meta = self.rocm_advisor.last_llm_meta or {}
+        if rocm_meta.get("error"):
+            llm_errors.append(f"ROCm Advisor: {rocm_meta['error']}")
+        if rocm_meta.get("used_llm"):
+            any_llm_used = True
+        if rocm_meta.get("used_mock"):
+            any_mock_used = True
+
         trace.append(
             make_trace_event(
                 run_id=run_id,
                 agent_name="rocm_advisor",
                 step_name="rocm_readiness_check",
                 input_summary="Evaluated ROCm relevance",
-                output_summary="Report ready" if rocm_report else "No ROCm incidents",
+                output_summary=(
+                    "LLM narrative generated"
+                    if rocm_meta.get("used_llm")
+                    else "Mock/fallback narrative used"
+                    + (f" (error: {rocm_meta['error']})" if rocm_meta.get("error") else "")
+                ),
                 latency_ms=elapsed_ms(t6),
                 status="success",
-                estimated_tokens=600,
-                estimated_cost_usd=0.0024,
+                estimated_tokens=rocm_meta.get("estimated_input_tokens", 0)
+                + rocm_meta.get("estimated_output_tokens", 0),
+                estimated_cost_usd=rocm_meta.get("estimated_cost_usd", 0.0),
             )
         )
 
@@ -197,8 +256,36 @@ class IncidentTriageWorkflow:
         agent_review_md = self._build_agent_review_markdown(
             planner_text, critic_text, mismatch_insights, triage_results
         )
+
+        # Determine narrative mode label
+        if any_llm_used and not any_mock_used:
+            narrative_mode = "Real endpoint"
+        elif any_llm_used:
+            narrative_mode = "Mixed (some fallback)"
+        else:
+            narrative_mode = "Mock/fallback"
+
+        llm_runtime_info = {
+            "mock_mode": self.llm.mock,
+            "model": self.llm.model,
+            "base_url": self.llm.base_url,
+            "narrative_mode": narrative_mode,
+            "errors": llm_errors,
+            "any_llm_used": any_llm_used,
+            "any_mock_used": any_mock_used,
+        }
+
         final_markdown = self._build_markdown_report(
-            run_id, incidents, baseline_results, triage_results, optimizations, rocm_report, trace, agent_review_md, comparison_md
+            run_id,
+            incidents,
+            baseline_results,
+            triage_results,
+            optimizations,
+            rocm_report,
+            trace,
+            agent_review_md,
+            comparison_md,
+            llm_runtime_info,
         )
         trace.append(
             make_trace_event(
@@ -209,8 +296,8 @@ class IncidentTriageWorkflow:
                 output_summary=f"Report length: {len(final_markdown)} chars",
                 latency_ms=elapsed_ms(t7),
                 status="success",
-                estimated_tokens=1200,
-                estimated_cost_usd=0.0048,
+                estimated_tokens=0,
+                estimated_cost_usd=0.0,
             )
         )
 
@@ -224,6 +311,7 @@ class IncidentTriageWorkflow:
             agent_review_markdown=agent_review_md,
             comparison_markdown=comparison_md,
             final_report_markdown=final_markdown,
+            llm_runtime_info=llm_runtime_info,
         )
 
     # ------------------------------------------------------------------
@@ -379,11 +467,26 @@ class IncidentTriageWorkflow:
         trace: List[AgentTraceEvent],
         agent_review_md: str,
         comparison_md: str,
+        llm_runtime_info: dict,
     ) -> str:
         lines: List[str] = []
         lines.append(f"# ROCm AgentOps Report — {run_id}")
         lines.append(f"**Generated:** {utc_now_iso()}  ")
         lines.append(f"**Incidents Processed:** {len(incidents)}  ")
+        lines.append("")
+
+        lines.append("## Runtime Mode")
+        lines.append(f"- **Mock Mode:** {'ON' if llm_runtime_info.get('mock_mode') else 'OFF'}")
+        lines.append(f"- **Model:** {llm_runtime_info.get('model', 'N/A')}")
+        lines.append(f"- **Base URL:** {llm_runtime_info.get('base_url', 'N/A')}")
+        lines.append(f"- **Narrative Generation:** {llm_runtime_info.get('narrative_mode', 'N/A')}")
+        if llm_runtime_info.get("errors"):
+            lines.append("- **Fallbacks Triggered:**")
+            for err in llm_runtime_info["errors"]:
+                lines.append(f"  - {err}")
+        else:
+            lines.append("- **Fallbacks Triggered:** None")
+        lines.append("- **Note:** Deterministic scoring remains unchanged regardless of LLM mode.")
         lines.append("")
 
         lines.append(comparison_md)
