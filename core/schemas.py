@@ -36,6 +36,42 @@ class Incident(BaseModel):
     sla_minutes_remaining: int = 60
 
 
+class RiskFlag(BaseModel):
+    code: str
+    label: str
+    severity: str
+    explanation: str
+
+
+class TriageDecision(BaseModel):
+    incident_id: str
+    title: str
+    system: str
+    status: str
+    severity_hint: str
+    priority_score: float = 0.0
+    confidence_score: float = 0.0
+    trust_score: float = 0.0
+    recommended_action: str = ""
+    reasons: List[str] = Field(default_factory=list)
+    risk_flags: List[RiskFlag] = Field(default_factory=list)
+    human_review_required: bool = False
+
+
+class AgentTraceEvent(BaseModel):
+    run_id: str
+    timestamp: str
+    agent_name: str
+    step_name: str
+    input_summary: str
+    output_summary: str
+    latency_ms: float = 0.0
+    status: str = "success"
+    risk_flags: List[str] = Field(default_factory=list)
+    estimated_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+
+
 class TriageResult(BaseModel):
     incident_id: str
     priority_rank: int = Field(..., ge=1, le=10)
@@ -71,19 +107,38 @@ class AgentTrace(BaseModel):
 
 
 class OptimizationRecommendation(BaseModel):
-    category: str  # cost, latency, accuracy, trust
-    title: str
-    description: str
-    estimated_impact: str  # high, medium, low
+    category: str = ""  # cost, latency, accuracy, trust
+    title: str = ""
+    description: str = ""
+    recommendation: str = ""
+    expected_benefit: str = ""
+    complexity: str = ""
+    estimated_impact: str = ""  # high, medium, low
     action_items: List[str] = Field(default_factory=list)
 
 
 class ROCmReadinessReport(BaseModel):
+    summary: str = ""
+    gpu_relevant_steps: List[str] = Field(default_factory=list)
+    rocm_optimizations: List[str] = Field(default_factory=list)
+    batching_opportunities: List[str] = Field(default_factory=list)
+    estimated_impact: str = ""
+    limitations: List[str] = Field(default_factory=list)
+    # Legacy fields preserved for compatibility
     model_compatible: bool = True
     gpu_recommendation: str = "MI300X"
     kernel_optimizations: List[str] = Field(default_factory=list)
     quantization_suggestion: Optional[str] = None
     notes: List[str] = Field(default_factory=list)
+
+
+class AgentRunResult(BaseModel):
+    run_id: str
+    triage_results: List[TriageDecision] = Field(default_factory=list)
+    trace: List[AgentTraceEvent] = Field(default_factory=list)
+    optimizations: List[OptimizationRecommendation] = Field(default_factory=list)
+    rocm_report: Optional[ROCmReadinessReport] = None
+    final_report_markdown: str = ""
 
 
 class FinalReport(BaseModel):

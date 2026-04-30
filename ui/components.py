@@ -1,18 +1,19 @@
 """Reusable Streamlit UI components."""
 
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 from core.schemas import (
+    AgentRunResult,
     AgentTrace,
-    FinalReport,
+    AgentTraceEvent,
     Incident,
     OptimizationRecommendation,
     ROCmReadinessReport,
-    TriageResult,
+    TriageDecision,
 )
 
 
@@ -59,52 +60,89 @@ def render_incidents(incidents: List[Incident]):
     st.dataframe(df[display_cols], use_container_width=True)
 
 
-def render_triage_results(results: List[TriageResult]):
+def render_triage_results(results: List[TriageDecision]):
     st.subheader("🚦 Triage Results")
     if not results:
         st.info("No triage results yet.")
         return
-    df = pd.DataFrame([r.model_dump() for r in results])
+
+    rows = []
+    for rank, r in enumerate(results, start=1):
+        rows.append({
+            "rank": rank,
+            "incident_id": r.incident_id,
+            "title": r.title,
+            "system": r.system,
+            "status": r.status,
+            "severity_hint": r.severity_hint,
+            "priority_score": r.priority_score,
+            "confidence_score": r.confidence_score,
+            "trust_score": r.trust_score,
+            "human_review_required": r.human_review_required,
+            "recommended_action": r.recommended_action,
+        })
+    df = pd.DataFrame(rows)
     st.dataframe(df, use_container_width=True)
 
-    # Bar chart of confidence scores
+    # Bar chart of priority scores
     fig = px.bar(
         df,
         x="incident_id",
-        y="confidence_score",
-        color="priority_rank",
-        title="Confidence Score by Incident",
-        labels={"confidence_score": "Confidence", "incident_id": "Incident"},
+        y="priority_score",
+        color="severity_hint",
+        title="Priority Score by Incident",
+        labels={"priority_score": "Priority", "incident_id": "Incident"},
     )
     st.plotly_chart(fig, use_container_width=True)
 
+    # Expandable details
+    for r in results:
+        with st.expander(f"{r.incident_id} — {r.title} (Priority: {r.priority_score})"):
+            st.write(f"**Recommended Action:** {r.recommended_action}")
+            st.write(f"**Human Review Required:** {'Yes' if r.human_review_required else 'No'}")
+            if r.reasons:
+                st.write("**Reasons:**")
+                for reason in r.reasons:
+                    st.write(f"- {reason}")
+            if r.risk_flags:
+                st.write("**Risk Flags:**")
+                for f in r.risk_flags:
+                    st.write(f"- **{f.label}** ({f.severity}): {f.explanation}")
 
-def render_trace(trace: AgentTrace):
+
+def render_trace(trace: List[AgentTraceEvent]):
     st.subheader("🔍 Agent Trace Timeline")
-    if not trace.steps:
+    if not trace:
         st.info("No trace available.")
         return
-    df = pd.DataFrame(
-        [
-            {
-                "Step": s.step_name,
-                "Agent": s.agent_name,
-                "Status": s.status,
-                "Latency (ms)": s.latency_ms,
-            }
-            for s in trace.steps
-        ]
-    )
+
+    rows = []
+    for evt in trace:
+        rows.append({
+            "Agent": evt.agent_name,
+            "Step": evt.step_name,
+            "Latency (ms)": evt.latency_ms,
+            "Status": evt.status,
+            "Input": evt.input_summary[:120],
+            "Output": evt.output_summary[:120],
+            "Risk Flags": ", ".join(evt.risk_flags) if evt.risk_flags else "—",
+            "Est. Cost": f"${evt.estimated_cost_usd:.4f}",
+        })
+    df = pd.DataFrame(rows)
     st.dataframe(df, use_container_width=True)
 
-    fig = px.timeline(
+    # Horizontal bar chart of latencies (numeric axis, not datetime)
+    df["Task"] = df["Agent"] + " — " + df["Step"]
+    fig = px.bar(
         df,
-        x_start=df.index,  # dummy; we use index for ordering
-        x_end=df.index + df["Latency (ms)"] / 1000,
-        y="Agent",
+        x="Latency (ms)",
+        y="Task",
         color="Status",
+        orientation="h",
         title="Agent Step Latencies",
+        labels={"Latency (ms)": "Latency (ms)", "Task": ""},
     )
+    fig.update_layout(xaxis_type="linear")
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -115,15 +153,48 @@ def render_optimizations(opts: List[OptimizationRecommendation]):
         return
     for o in opts:
         with st.expander(f"{o.title} ({o.category}, {o.estimated_impact} impact)"):
-            st.write(o.description)
+            if o.description:
+                st.write(o.description)
+            if o.recommendation:
+                st.write(f"**Recommendation:** {o.recommendation}")
+            if o.expected_benefit:
+                st.write(f"**Expected Benefit:** {o.expected_benefit}")
+            if o.complexity:
+                st.write(f"**Complexity:** {o.complexity}")
             if o.action_items:
                 st.write("**Actions:**")
                 for a in o.action_items:
                     st.write(f"- {a}")
 
 
-def render_rocm_report(report: ROCmReadinessReport):
+def render_rocm_report(report: Optional[ROCmReadinessReport]):
     st.subheader("🖥️ ROCm / AMD Readiness")
+    if not report:
+        st.info("No ROCm readiness report available.")
+        return
+
+    st.write(f"**Summary:** {report.summary}")
+    st.write(f"**Estimated Impact:** {report.estimated_impact}")
+
+    if report.gpu_relevant_steps:
+        st.write(f"**GPU Relevant Steps:** {', '.join(report.gpu_relevant_steps)}")
+
+    if report.rocm_optimizations:
+        st.write("**ROCm Optimizations:**")
+        for opt in report.rocm_optimizations:
+            st.write(f"- {opt}")
+
+    if report.batching_opportunities:
+        st.write("**Batching Opportunities:**")
+        for b in report.batching_opportunities:
+            st.write(f"- {b}")
+
+    if report.limitations:
+        st.write("**Limitations:**")
+        for lim in report.limitations:
+            st.write(f"- {lim}")
+
+    # Legacy compatibility metrics
     col1, col2, col3 = st.columns(3)
     col1.metric("Compatible", "Yes" if report.model_compatible else "No")
     col2.metric("Recommended GPU", report.gpu_recommendation)
@@ -136,24 +207,18 @@ def render_rocm_report(report: ROCmReadinessReport):
             st.write(f"- {n}")
 
 
-def render_final_report(report: FinalReport):
+def render_final_report(report: AgentRunResult):
     st.subheader("📊 Final Report")
     col1, col2, col3 = st.columns(3)
-    col1.metric("Incidents", len(report.incidents))
-    col2.metric("Triage Results", len(report.triage_results))
-    col3.metric("Overall Trust Score", f"{report.overall_trust_score:.2f}")
+    col1.metric("Incidents", len(report.triage_results))
+    col2.metric("Trace Events", len(report.trace))
+    col3.metric("Optimizations", len(report.optimizations))
+
+    st.markdown(report.final_report_markdown)
 
     st.download_button(
         label="Download Markdown Report",
-        data=report.summary_md,
+        data=report.final_report_markdown,
         file_name="rocm_agentops_report.md",
         mime="text/markdown",
-    )
-
-    json_bytes = report.model_dump_json(indent=2).encode("utf-8")
-    st.download_button(
-        label="Download JSON Report",
-        data=json_bytes,
-        file_name="rocm_agentops_report.json",
-        mime="application/json",
     )

@@ -2,11 +2,62 @@
 
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from core.schemas import AgentStep, AgentTrace
+from core.schemas import AgentStep, AgentTrace, AgentTraceEvent
 
+
+# ---------------------------------------------------------------------------
+# Simple trace utilities
+# ---------------------------------------------------------------------------
+
+def create_run_id() -> str:
+    return f"run-{uuid.uuid4().hex[:12]}"
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def start_timer() -> float:
+    return time.perf_counter()
+
+
+def elapsed_ms(start: float) -> float:
+    return round((time.perf_counter() - start) * 1000, 2)
+
+
+def make_trace_event(
+    run_id: str,
+    agent_name: str,
+    step_name: str,
+    input_summary: str,
+    output_summary: str,
+    latency_ms: float,
+    status: str = "success",
+    risk_flags: Optional[list] = None,
+    estimated_tokens: int = 0,
+    estimated_cost_usd: float = 0.0,
+) -> AgentTraceEvent:
+    return AgentTraceEvent(
+        run_id=run_id,
+        timestamp=utc_now_iso(),
+        agent_name=agent_name,
+        step_name=step_name,
+        input_summary=input_summary,
+        output_summary=output_summary,
+        latency_ms=latency_ms,
+        status=status,
+        risk_flags=risk_flags or [],
+        estimated_tokens=estimated_tokens,
+        estimated_cost_usd=estimated_cost_usd,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Legacy TraceBuilder (kept for backward compatibility with agent files)
+# ---------------------------------------------------------------------------
 
 class TraceBuilder:
     """Build an AgentTrace incrementally."""

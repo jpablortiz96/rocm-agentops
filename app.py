@@ -88,7 +88,7 @@ def main():
     if st.button("Run Triage Workflow", type="primary"):
         with st.spinner("Running agentic workflow..."):
             workflow = IncidentTriageWorkflow(llm_client=llm_client)
-            report = workflow.run(incidents)
+            report = workflow.run(filtered)
 
         st.success("Workflow complete!")
 
