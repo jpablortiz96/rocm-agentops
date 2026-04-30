@@ -1,0 +1,209 @@
+[
+  {
+    "id": "INC-001",
+    "title": "Payment gateway outage",
+    "description": "All payment methods failing across checkout flows. Stripe and PayPal returning 503 errors. Error rate jumped from 0.1% to 18% in 4 minutes.",
+    "reported_at": "2026-04-30T10:00:00Z",
+    "location": "us-east-1",
+    "affected_users": 45000,
+    "revenue_impact_usd": 125000,
+    "severity_hint": "critical",
+    "system": "payments",
+    "status": "open",
+    "evidence": [
+      "Stripe webhook 500s",
+      "PagerDuty alert fired at 09:58",
+      "DB connection pool exhausted"
+    ],
+    "sla_minutes_remaining": 5
+  },
+  {
+    "id": "INC-002",
+    "title": "REST API p99 latency spike",
+    "description": "API latency jumped from 120ms to 4.2s p99. No corresponding error rate increase. Suspect upstream dependency slowdown.",
+    "reported_at": "2026-04-30T10:15:00Z",
+    "location": "eu-west-1",
+    "affected_users": 12000,
+    "revenue_impact_usd": 8000,
+    "severity_hint": "high",
+    "system": "api",
+    "status": "investigating",
+    "evidence": [
+      "Grafana p99 > 4s since 10:10"
+    ],
+    "sla_minutes_remaining": 30
+  },
+  {
+    "id": "INC-003",
+    "title": "ETL pipeline stalled",
+    "description": "Daily revenue ETL pipeline has not completed. Downstream finance dashboards are stale. No direct user impact but forecasting is blocked.",
+    "reported_at": "2026-04-30T09:45:00Z",
+    "location": "us-west-2",
+    "affected_users": 0,
+    "revenue_impact_usd": 150000,
+    "severity_hint": "high",
+    "system": "data_pipeline",
+    "status": "open",
+    "evidence": [
+      "Airflow DAG timeout after 3h",
+      "S3 write errors in worker logs"
+    ],
+    "sla_minutes_remaining": 120
+  },
+  {
+    "id": "INC-004",
+    "title": "Suspicious IAM activity",
+    "description": "Unusual ListUsers and CreateAccessKey calls originating from an unknown IP range. Potential credential compromise.",
+    "reported_at": "2026-04-30T11:00:00Z",
+    "location": "global",
+    "affected_users": 5,
+    "revenue_impact_usd": 0,
+    "severity_hint": "critical",
+    "system": "security",
+    "status": "investigating",
+    "evidence": [],
+    "sla_minutes_remaining": 10
+  },
+  {
+    "id": "INC-005",
+    "title": "Customer support escalation — widespread notification delay",
+    "description": "Email and push notifications delayed by 2 minutes globally. Reported via enterprise support channel. Issue is cosmetic but affects all active users.",
+    "reported_at": "2026-04-30T08:30:00Z",
+    "location": "ap-south-1",
+    "affected_users": 250000,
+    "revenue_impact_usd": 500,
+    "severity_hint": "low",
+    "system": "customer_support",
+    "status": "mitigated",
+    "evidence": [
+      "Zendesk ticket #4421",
+      "SNSNotification latency spike",
+      "Customer confirmed fix at 08:45"
+    ],
+    "sla_minutes_remaining": 240
+  },
+  {
+    "id": "INC-006",
+    "title": "GPU inference latency degradation on MI300X",
+    "description": "Inference throughput dropped 40% on ROCm cluster. rocm-smi indicates thermal throttling. Triton kernels falling back to slower implementations.",
+    "reported_at": "2026-04-30T10:30:00Z",
+    "location": "us-west-2",
+    "affected_users": 8000,
+    "revenue_impact_usd": 22000,
+    "severity_hint": "high",
+    "system": "inference",
+    "status": "open",
+    "evidence": [
+      "rocm-smi shows thermal throttle",
+      "Triton kernel fallback logs",
+      "MI300X utilization pinned at 95%"
+    ],
+    "sla_minutes_remaining": 15
+  },
+  {
+    "id": "INC-007",
+    "title": "LLM hallucination in production",
+    "description": "Support chatbot generating incorrect refund policies and unauthorized discount codes. Answers appear confident but contradict internal policy docs.",
+    "reported_at": "2026-04-30T11:15:00Z",
+    "location": "us-east-1",
+    "affected_users": 3200,
+    "revenue_impact_usd": 45000,
+    "severity_hint": "critical",
+    "system": "inference",
+    "status": "investigating",
+    "evidence": [
+      "User complaint #882",
+      "Chat log verification mismatch"
+    ],
+    "sla_minutes_remaining": 8
+  },
+  {
+    "id": "INC-008",
+    "title": "Canary deployment rollback",
+    "description": "New inference service version crashing on startup with OOM. Automatic rollback executed but canary still serving 2% traffic with elevated 5xx.",
+    "reported_at": "2026-04-30T07:20:00Z",
+    "location": "eu-west-1",
+    "affected_users": 150,
+    "revenue_impact_usd": 0,
+    "severity_hint": "high",
+    "system": "deployment",
+    "status": "mitigated",
+    "evidence": [
+      "Deployment log: OOMKilled",
+      "Rollback executed at 07:25",
+      "Previous pod healthy",
+      "Canary still 2% traffic"
+    ],
+    "sla_minutes_remaining": 180
+  },
+  {
+    "id": "INC-009",
+    "title": "Primary DB connection limits reached",
+    "description": "PostgreSQL max_connections exhausted during flash sale. Read replicas healthy but writes are queuing. Checkout flow degraded.",
+    "reported_at": "2026-04-30T10:05:00Z",
+    "location": "us-east-1",
+    "affected_users": 67000,
+    "revenue_impact_usd": 89000,
+    "severity_hint": "critical",
+    "system": "database",
+    "status": "open",
+    "evidence": [
+      "PostgreSQL alert: too many clients",
+      "Connection pool metrics > 100%",
+      "Slow query log spike"
+    ],
+    "sla_minutes_remaining": 12
+  },
+  {
+    "id": "INC-010",
+    "title": "Checkout page blank for Safari users",
+    "description": "React hydration error causing blank screen on Safari 17.4. Other browsers unaffected. Conversion rate down 12% on affected segment.",
+    "reported_at": "2026-04-30T09:10:00Z",
+    "location": "global",
+    "affected_users": 18000,
+    "revenue_impact_usd": 34000,
+    "severity_hint": "high",
+    "system": "frontend",
+    "status": "monitoring",
+    "evidence": [
+      "Sentry traceback: hydration mismatch",
+      "Safari 17.4 only"
+    ],
+    "sla_minutes_remaining": 45
+  },
+  {
+    "id": "INC-011",
+    "title": "OAuth token validation failing",
+    "description": "Third-party OAuth provider returning invalid signatures. JWT signature mismatch on previously valid tokens. Mobile app logins failing.",
+    "reported_at": "2026-04-30T08:50:00Z",
+    "location": "ap-south-1",
+    "affected_users": 9500,
+    "revenue_impact_usd": 2000,
+    "severity_hint": "medium",
+    "system": "authentication",
+    "status": "open",
+    "evidence": [
+      "OAuth provider status page green",
+      "JWT signature mismatch in logs",
+      "Valid client_id, bad signature"
+    ],
+    "sla_minutes_remaining": 90
+  },
+  {
+    "id": "INC-012",
+    "title": "ROCm CI runner disk full",
+    "description": "GitHub Actions ROCm runners failing due to /tmp exhaustion. Build artifacts accumulating after nightly model builds. Blocking ROCm-specific PRs.",
+    "reported_at": "2026-04-30T06:00:00Z",
+    "location": "us-west-2",
+    "affected_users": 0,
+    "revenue_impact_usd": 0,
+    "severity_hint": "low",
+    "system": "deployment",
+    "status": "investigating",
+    "evidence": [
+      "Runner log: no space left on device",
+      "Build artifacts accumulating in /tmp"
+    ],
+    "sla_minutes_remaining": 240
+  }
+]
