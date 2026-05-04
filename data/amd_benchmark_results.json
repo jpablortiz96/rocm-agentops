@@ -1,0 +1,227 @@
+{
+  "run_id": "amd-bench-60fd7fd63f3e",
+  "timestamp": "2026-05-04T21:22:39.771394Z",
+  "endpoint_base_url": "http://localhost:8000/v1",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "mock_mode": false,
+  "total_requests": 20,
+  "successful_requests": 20,
+  "failed_requests": 0,
+  "concurrency_levels": [
+    1,
+    2
+  ],
+  "avg_latency_ms": 1502.98,
+  "p50_latency_ms": 1740.98,
+  "p95_latency_ms": 2456.03,
+  "estimated_total_tokens": 8711,
+  "estimated_tokens_per_second": 387.17,
+  "benchmark_duration_seconds": 22.5,
+  "notes": [
+    "Benchmark run against OpenAI-compatible endpoint.",
+    "Tested concurrency levels: [1, 2]."
+  ],
+  "request_results": [
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-planner-0",
+      "prompt_type": "planner",
+      "success": true,
+      "latency_ms": 2230.78,
+      "estimated_input_tokens": 84,
+      "estimated_output_tokens": 537,
+      "estimated_total_tokens": 621,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-critic-1",
+      "prompt_type": "critic",
+      "success": true,
+      "latency_ms": 704.44,
+      "estimated_input_tokens": 191,
+      "estimated_output_tokens": 76,
+      "estimated_total_tokens": 267,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-optimizer-2",
+      "prompt_type": "optimizer",
+      "success": true,
+      "latency_ms": 2458.91,
+      "estimated_input_tokens": 146,
+      "estimated_output_tokens": 660,
+      "estimated_total_tokens": 806,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-rocm_advisor-3",
+      "prompt_type": "rocm_advisor",
+      "success": true,
+      "latency_ms": 1739.74,
+      "estimated_input_tokens": 102,
+      "estimated_output_tokens": 416,
+      "estimated_total_tokens": 518,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-reporter-4",
+      "prompt_type": "reporter",
+      "success": true,
+      "latency_ms": 510.43,
+      "estimated_input_tokens": 80,
+      "estimated_output_tokens": 82,
+      "estimated_total_tokens": 162,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-planner-5",
+      "prompt_type": "planner",
+      "success": true,
+      "latency_ms": 2455.88,
+      "estimated_input_tokens": 84,
+      "estimated_output_tokens": 576,
+      "estimated_total_tokens": 660,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-critic-6",
+      "prompt_type": "critic",
+      "success": true,
+      "latency_ms": 718.02,
+      "estimated_input_tokens": 191,
+      "estimated_output_tokens": 76,
+      "estimated_total_tokens": 267,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-optimizer-7",
+      "prompt_type": "optimizer",
+      "success": true,
+      "latency_ms": 1740.48,
+      "estimated_input_tokens": 146,
+      "estimated_output_tokens": 391,
+      "estimated_total_tokens": 537,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-rocm_advisor-8",
+      "prompt_type": "rocm_advisor",
+      "success": true,
+      "latency_ms": 1741.48,
+      "estimated_input_tokens": 102,
+      "estimated_output_tokens": 417,
+      "estimated_total_tokens": 519,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-reporter-9",
+      "prompt_type": "reporter",
+      "success": true,
+      "latency_ms": 513.6,
+      "estimated_input_tokens": 80,
+      "estimated_output_tokens": 79,
+      "estimated_total_tokens": 159,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-critic-10",
+      "prompt_type": "critic",
+      "success": true,
+      "latency_ms": 815.3,
+      "estimated_input_tokens": 191,
+      "estimated_output_tokens": 76,
+      "estimated_total_tokens": 267,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-planner-11",
+      "prompt_type": "planner",
+      "success": true,
+      "latency_ms": 2044.16,
+      "estimated_input_tokens": 84,
+      "estimated_output_tokens": 413,
+      "estimated_total_tokens": 497,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-optimizer-12",
+      "prompt_type": "optimizer",
+      "success": true,
+      "latency_ms": 2310.74,
+      "estimated_input_tokens": 146,
+      "estimated_output_tokens": 491,
+      "estimated_total_tokens": 637,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-reporter-13",
+      "prompt_type": "reporter",
+      "success": true,
+      "latency_ms": 553.46,
+      "estimated_input_tokens": 80,
+      "estimated_output_tokens": 82,
+      "estimated_total_tokens": 162,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-rocm_advisor-14",
+      "prompt_type": "rocm_advisor",
+      "success": true,
+      "latency_ms": 1945.42,
+      "estimated_input_tokens": 102,
+      "estimated_output_tokens": 412,
+      "estimated_total_tokens": 514,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-critic-15",
+      "prompt_type": "critic",
+      "success": true,
+      "latency_ms": 818.06,
+      "estimated_input_tokens": 191,
+      "estimated_output_tokens": 76,
+      "estimated_total_tokens": 267,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-planner-16",
+      "prompt_type": "planner",
+      "success": true,
+      "latency_ms": 1947.05,
+      "estimated_input_tokens": 84,
+      "estimated_output_tokens": 413,
+      "estimated_total_tokens": 497,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-optimizer-17",
+      "prompt_type": "optimizer",
+      "success": true,
+      "latency_ms": 2265.21,
+      "estimated_input_tokens": 146,
+      "estimated_output_tokens": 493,
+      "estimated_total_tokens": 639,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-reporter-18",
+      "prompt_type": "reporter",
+      "success": true,
+      "latency_ms": 497.95,
+      "estimated_input_tokens": 80,
+      "estimated_output_tokens": 85,
+      "estimated_total_tokens": 165,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-60fd7fd63f3e-rocm_advisor-19",
+      "prompt_type": "rocm_advisor",
+      "success": true,
+      "latency_ms": 2048.5,
+      "estimated_input_tokens": 102,
+      "estimated_output_tokens": 448,
+      "estimated_total_tokens": 550,
+      "error": null
+    }
+  ],
+  "benchmark_verified": true
+}

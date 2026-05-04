@@ -16,6 +16,7 @@ from core.schemas import (
     ROCmReadinessReport,
     TriageDecision,
 )
+from core.benchmarking import load_benchmark_results
 from core.scoring import calculate_incident_priority_score, run_baseline_triage
 from core.tracing import create_run_id, elapsed_ms, make_trace_event, start_timer, utc_now_iso
 
@@ -487,28 +488,58 @@ class IncidentTriageWorkflow:
         else:
             lines.append("- **Fallbacks Triggered:** None")
         lines.append("- **Note:** Deterministic scoring remains unchanged regardless of LLM mode.")
+        # Context-aware latency language
+        if llm_runtime_info.get("narrative_mode") == "Real endpoint":
+            lines.append("- **Latency:** LLM narrative latencies were measured from the configured OpenAI-compatible endpoint.")
+            lines.append("- **Cost:** Costs are estimated unless provider billing data is attached.")
+        else:
+            lines.append("- **Latency:** LLM narrative outputs used mock/fallback mode. Latencies are estimates for demo stability.")
+            lines.append("- **Cost:** Costs are simulated estimates for demonstration purposes.")
+        lines.append("")
+
+        lines.append("## AMD Live Benchmark")
+        bench = load_benchmark_results("data/amd_benchmark_results.json")
+        if bench:
+            if bench.successful_requests > 0:
+                lines.append(f"- **Run ID:** {bench.run_id}")
+                lines.append(f"- **Endpoint:** {bench.endpoint_base_url}")
+                lines.append(f"- **Model:** {bench.model}")
+                lines.append(f"- **Avg Latency:** {bench.avg_latency_ms:.2f} ms")
+                lines.append(f"- **p50 Latency:** {bench.p50_latency_ms:.2f} ms")
+                lines.append(f"- **p95 Latency:** {bench.p95_latency_ms:.2f} ms")
+                lines.append(f"- **Tokens/sec:** {bench.estimated_tokens_per_second:.2f}")
+                lines.append(f"- **Success Rate:** {bench.successful_requests}/{bench.total_requests}")
+                lines.append(f"- **Benchmark Duration:** {bench.benchmark_duration_seconds:.2f}s")
+            else:
+                lines.append(
+                    "AMD benchmark attempted but not verified. All requests failed. "
+                    "Do not use these metrics as performance evidence."
+                )
+                lines.append(f"- **Run ID:** {bench.run_id}")
+                lines.append(f"- **Endpoint:** {bench.endpoint_base_url}")
+                lines.append(f"- **Failed Requests:** {bench.failed_requests}/{bench.total_requests}")
+        else:
+            lines.append(
+                "AMD live benchmark not yet attached. The system is ready to connect to an "
+                "AMD Developer Cloud OpenAI-compatible endpoint."
+            )
         lines.append("")
 
         lines.append(comparison_md)
         lines.append("")
 
-        lines.append("## Triage Results (Ranked)")
-        for rank, d in enumerate(triage_results, start=1):
+        lines.append("## Top 5 Triage Results")
+        for rank, d in enumerate(triage_results[:5], start=1):
             lines.append(f"### {rank}. {d.incident_id} — {d.title}")
             lines.append(f"- **System:** {d.system} | **Status:** {d.status} | **Severity:** {d.severity_hint}")
-            lines.append(f"- **Priority Score:** {d.priority_score}")
-            lines.append(f"- **Confidence:** {d.confidence_score}")
-            lines.append(f"- **Trust:** {d.trust_score}")
-            lines.append(f"- **Action:** {d.recommended_action}")
-            lines.append(f"- **Human Review:** {'Yes' if d.human_review_required else 'No'}")
-            if d.reasons:
-                lines.append("- **Reasons:**")
-                for r in d.reasons:
-                    lines.append(f"  - {r}")
+            lines.append(f"- **Priority Score:** {d.priority_score} | **Confidence:** {d.confidence_score} | **Trust:** {d.trust_score}")
+            lines.append(f"- **Action:** {d.recommended_action} | **Human Review:** {'Yes' if d.human_review_required else 'No'}")
             if d.risk_flags:
-                lines.append("- **Risk Flags:**")
-                for f in d.risk_flags:
-                    lines.append(f"  - **{f.label}** ({f.severity}): {f.explanation}")
+                flag_labels = ", ".join(f"{f.label} ({f.severity})" for f in d.risk_flags)
+                lines.append(f"- **Risk Flags:** {flag_labels}")
+            lines.append("")
+        if len(triage_results) > 5:
+            lines.append(f"*… and {len(triage_results) - 5} more incidents. See Triage tab for full details.*")
             lines.append("")
 
         lines.append("## Optimization Recommendations")
@@ -549,7 +580,7 @@ class IncidentTriageWorkflow:
             lines.append("No ROCm readiness report generated.")
         lines.append("")
 
-        lines.append("## Agent Review")
+        # Agent Review markdown already starts with '# Agent Review', so don't add another heading
         lines.append(agent_review_md)
         lines.append("")
 
@@ -563,9 +594,28 @@ class IncidentTriageWorkflow:
                 f"| {evt.step_name} | {evt.agent_name} | {evt.latency_ms} | {evt.estimated_tokens} | ${evt.estimated_cost_usd:.4f} |"
             )
         lines.append("")
-        lines.append("> **Note:** All costs and latencies shown are simulated estimates for demonstration purposes. "
-                    "Deterministic scoring steps incur no LLM cost. Only planner, critic, optimizer, ROCm advisor, and reporter steps include mock LLM-like costs. "
-                    "Connect to a live Qwen/Llama/Mistral endpoint on AMD Cloud for real inference.")
+        if llm_runtime_info.get("narrative_mode") == "Real endpoint":
+            lines.append("> **Note:** LLM narrative latencies were measured from the configured OpenAI-compatible endpoint. "
+                        "Deterministic scoring steps incur no LLM cost. Benchmark metrics come from `scripts/run_amd_benchmark.py`.")
+        else:
+            lines.append("> **Note:** LLM narrative outputs used mock/fallback mode. Latencies and costs are estimates for demo stability. "
+                        "Deterministic scoring steps incur no LLM cost. Connect to a live endpoint for real inference.")
+        lines.append("")
+
+        lines.append("## Limitations")
+        lines.append("- Deterministic scoring uses heuristics; domain-specific tuning may improve accuracy.")
+        lines.append("- Token and cost estimates are approximate (len(text)/4 heuristic).")
+        lines.append("- Benchmark results reflect point-in-time endpoint performance.")
+        lines.append("- LLM-generated narrative should be reviewed for factual accuracy before production use.")
+        lines.append("- This is a hackathon MVP; production deployment requires additional hardening.")
+        lines.append("")
+
+        lines.append("## Next Steps")
+        lines.append("1. Tune scoring weights for your incident taxonomy.")
+        lines.append("2. Run `scripts/run_amd_benchmark.py` against your AMD Developer Cloud endpoint.")
+        lines.append("3. Connect a live Qwen/Llama/Mistral model via vLLM on ROCm for real LLM narrative.")
+        lines.append("4. Add persistent trace storage and alerting integrations.")
+        lines.append("5. Review and validate all LLM-generated claims before judge presentation.")
         lines.append("")
 
         return "\n".join(lines)

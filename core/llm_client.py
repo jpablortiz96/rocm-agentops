@@ -57,27 +57,17 @@ class LLMClient:
                 "estimated_cost_usd": 0.0,
             }
 
-        if not self.api_key:
-            content = fallback or self._mock_content(user_prompt)
-            return {
-                "content": content,
-                "used_llm": False,
-                "used_mock": True,
-                "error": "API key missing",
-                "model": self.model,
-                "estimated_input_tokens": 0,
-                "estimated_output_tokens": 0,
-                "estimated_cost_usd": 0.0,
-            }
+        # Build URL: if base_url ends with /v1, append /chat/completions;
+        # otherwise append /v1/chat/completions to match standard OpenAI layout.
+        base = self.base_url
+        if base.endswith("/v1"):
+            url = f"{base}/chat/completions"
+        else:
+            url = f"{base}/v1/chat/completions"
 
-        # Build URL: base_url may already end with /v1; avoid double /v1/v1.
-        # The caller is responsible for providing a base_url that includes the
-        # API version path if their endpoint requires it (e.g. https://api.openai.com/v1).
-        url = f"{self.base_url}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
         payload = {
             "model": self.model,
             "messages": [

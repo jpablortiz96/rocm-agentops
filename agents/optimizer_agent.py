@@ -8,7 +8,11 @@ from core.tracing import TraceBuilder
 
 
 class OptimizerAgent:
-    """Generates optimization recommendations for the agentic workflow."""
+    """Generates optimization recommendations for the agentic workflow.
+
+    Policy: always return 5 structured, deterministic recommendations.
+    LLM may add a concise rationale field, but never replaces the curated list.
+    """
 
     SYSTEM_PROMPT = (
         "You are an AI cost and latency optimization expert for agentic workflows. "
@@ -92,15 +96,20 @@ class OptimizerAgent:
         self,
         triage_decisions: List[TriageDecision],
     ) -> List[OptimizationRecommendation]:
-        """Produce optimization recommendations for AgentOps demo."""
-        # Deterministic fallback recommendations
-        fallback_opts = [
+        """Produce 5 structured optimization recommendations for AgentOps demo.
+
+        The 5 recommendations are deterministic and curated. If a real LLM is used,
+        its output is appended as a rationale on the first recommendation without
+        replacing the structured list.
+        """
+        # Curated, deterministic recommendations
+        recommendations = [
             OptimizationRecommendation(
-                category="cost",
-                title="Use Deterministic Scoring for Priority Routing",
-                description="Priority, confidence, and trust scores should be computed deterministically without LLM calls. This eliminates latency and cost for the ranking step.",
+                category="reliability/cost",
+                title="Keep Priority Scoring Deterministic",
+                description="Priority, confidence, and trust scores are computed mathematically without LLM calls. This preserves auditability and eliminates ranking latency.",
                 recommendation="Route all incidents through deterministic scoring first. Only use LLMs for explanation, critique, and report generation.",
-                expected_benefit="Eliminate LLM cost and latency for the ranking step (60-80% of workflow time).",
+                expected_benefit="Avoid unnecessary LLM calls for ranking and preserve auditability.",
                 complexity="low",
                 estimated_impact="high",
                 action_items=[
@@ -109,37 +118,37 @@ class OptimizerAgent:
                 ],
             ),
             OptimizationRecommendation(
-                category="cost",
-                title="Use Smaller Models for Summaries",
-                description="Critic reviews and optimizer suggestions can run on smaller models with lower token counts.",
-                recommendation="Switch summary and critique generation to a 7B-parameter model or distilled variant.",
-                expected_benefit="Reduce token cost by 40-60% for non-critical steps.",
-                complexity="low",
-                estimated_impact="medium",
-                action_items=[
-                    "Use Qwen-7B or Llama-3.1-8B for summaries",
-                    "Route only final report assembly to the largest model",
-                ],
-            ),
-            OptimizationRecommendation(
-                category="latency",
-                title="Batch Inference for Many Incidents",
-                description="When incident volume spikes, batching LLM calls reduces overhead.",
-                recommendation="Group similar incidents into batches and run a single LLM prompt per batch.",
-                expected_benefit="Reduce per-incident latency by 30-50% during spikes.",
+                category="latency/throughput",
+                title="Batch LLM Narrative Steps on AMD/vLLM",
+                description="Planner, critic, optimizer, ROCm advisor, and reporter prompts can be batched when incident volume increases.",
+                recommendation="Group similar incidents into batches and run a single LLM prompt per batch on AMD/vLLM.",
+                expected_benefit="Planner, critic, optimizer, ROCm advisor, and reporter prompts can be batched when incident volume increases.",
                 complexity="medium",
-                estimated_impact="medium",
+                estimated_impact="high",
                 action_items=[
                     "Implement batch prompt templates",
                     "Use vLLM continuous batching on AMD MI300X",
                 ],
             ),
             OptimizationRecommendation(
-                category="latency",
-                title="Cache Repeated Reports",
+                category="cost/quality",
+                title="Route by Risk Tier",
+                description="Low-risk incidents do not need LLM critique. High-risk incidents trigger LLM review and human escalation.",
+                recommendation="Use deterministic trust score and risk flags to route incidents. Only escalate high-risk or ambiguous cases to LLM critique.",
+                expected_benefit="Low-risk incidents use deterministic templates; high-risk incidents trigger LLM critique and human review.",
+                complexity="low",
+                estimated_impact="high",
+                action_items=[
+                    "Set trust-score threshold for LLM critique routing",
+                    "Auto-batch low-risk incidents into template responses",
+                ],
+            ),
+            OptimizationRecommendation(
+                category="cost/latency",
+                title="Cache Repeated Incident Reports",
                 description="Final reports for identical incident signatures are often regenerated.",
-                recommendation="Cache markdown reports keyed by incident hash.",
-                expected_benefit="Eliminate redundant LLM calls for duplicate signatures.",
+                recommendation="Cache markdown reports keyed by incident hash and invalidate when evidence changes.",
+                expected_benefit="Avoid regenerating similar summaries for recurring incident signatures.",
                 complexity="low",
                 estimated_impact="medium",
                 action_items=[
@@ -148,11 +157,11 @@ class OptimizerAgent:
                 ],
             ),
             OptimizationRecommendation(
-                category="latency",
-                title="Deploy on AMD MI300X with ROCm + vLLM",
-                description="High-throughput open-source inference (Qwen, Llama, Mistral) runs efficiently on AMD MI300X with ROCm.",
-                recommendation="Serve models via vLLM on MI300X with hipBLASLt and FP8 quantization for maximum throughput.",
-                expected_benefit="2-4x higher throughput per dollar compared to standard cloud GPU instances.",
+                category="infrastructure",
+                title="Use AMD Developer Cloud for Open-Source Model Serving",
+                description="ROCm and vLLM provide an open, controllable stack for serving Qwen, Llama, and Mistral-class models.",
+                recommendation="Serve Qwen/Llama/Mistral-class models through ROCm/vLLM for controllable, open-source agent infrastructure.",
+                expected_benefit="Serve Qwen/Llama/Mistral-class models through ROCm/vLLM for controllable, open-source agent infrastructure.",
                 complexity="medium",
                 estimated_impact="high",
                 action_items=[
@@ -178,18 +187,9 @@ class OptimizerAgent:
         result = self.llm.chat(self.SYSTEM_PROMPT, user_prompt)
         self.last_llm_meta = result
 
-        # If real LLM was used, wrap its output in a single recommendation
-        if result["used_llm"]:
-            return [
-                OptimizationRecommendation(
-                    category="trust",
-                    title="LLM-Generated Optimizations",
-                    description=result["content"],
-                    recommendation="Review the generated suggestions and prioritize by impact.",
-                    expected_benefit="Varies by suggestion",
-                    complexity="medium",
-                    estimated_impact="medium",
-                )
-            ]
+        # If real LLM was used, append its narrative as a rationale on the first
+        # recommendation without replacing the curated list.
+        if result["used_llm"] and result["content"]:
+            recommendations[0].rationale = result["content"]
 
-        return fallback_opts
+        return recommendations

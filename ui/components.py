@@ -1,11 +1,15 @@
 """Reusable Streamlit UI components."""
 
+import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from core.benchmark_schemas import AmdBenchmarkSummary
+from core.benchmarking import build_evidence_pack
 from core.schemas import (
     AgentRunResult,
     AgentTrace,
@@ -283,6 +287,114 @@ def render_rocm_report(report: Optional[ROCmReadinessReport]):
         st.write("**Notes:**")
         for n in report.notes:
             st.write(f"- {n}")
+
+
+def render_amd_live_evidence(benchmark: Optional[AmdBenchmarkSummary]):
+    st.subheader("🔥 AMD Live Evidence")
+    if benchmark is None:
+        st.warning("No verified AMD benchmark loaded yet.")
+        st.markdown("To generate benchmark results against an AMD Developer Cloud endpoint, run:")
+        st.code(
+            "python scripts/health_check_endpoint.py --base-url http://YOUR_AMD_ENDPOINT:8000/v1",
+            language="bash",
+        )
+        st.code(
+            "python scripts/run_amd_benchmark.py --base-url http://YOUR_AMD_ENDPOINT:8000/v1 --model Qwen/Qwen2.5-7B-Instruct --concurrency 1 2 4 --repeat 3",
+            language="bash",
+        )
+        st.markdown(
+            "Then reload this app or re-run the workflow to see the benchmark metrics."
+        )
+        return
+
+    verified = benchmark.successful_requests > 0
+
+    if not verified:
+        st.warning("AMD benchmark file loaded, but no successful requests were recorded.")
+    else:
+        st.success("Verified AMD benchmark loaded.")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Run ID", benchmark.run_id)
+    col2.metric("Model", benchmark.model)
+    col3.metric("Endpoint", benchmark.endpoint_base_url)
+
+    col4, col5, col6 = st.columns(3)
+    col4.metric("Total Requests", benchmark.total_requests)
+    col5.metric("Successful", benchmark.successful_requests)
+    col6.metric("Failed", benchmark.failed_requests)
+
+    col7, col8, col9 = st.columns(3)
+    if verified:
+        col7.metric("Avg Latency (ms)", f"{benchmark.avg_latency_ms:.2f}")
+        col8.metric("p50 Latency (ms)", f"{benchmark.p50_latency_ms:.2f}")
+        col9.metric("p95 Latency (ms)", f"{benchmark.p95_latency_ms:.2f}")
+    else:
+        col7.metric("Avg Latency (ms)", "N/A")
+        col8.metric("p50 Latency (ms)", "N/A")
+        col9.metric("p95 Latency (ms)", "N/A")
+
+    if verified:
+        st.write(f"**Estimated Tokens/sec:** {benchmark.estimated_tokens_per_second:.2f}")
+    else:
+        st.write("**Estimated Tokens/sec:** N/A")
+    st.write(f"**Benchmark Duration:** {benchmark.benchmark_duration_seconds:.2f}s")
+    st.write(f"**Concurrency Levels:** {benchmark.concurrency_levels}")
+
+    if benchmark.notes:
+        st.write("**Notes:**")
+        for note in benchmark.notes:
+            st.write(f"- {note}")
+
+    # Request results table (always visible for debugging)
+    rows = []
+    for r in benchmark.request_results:
+        rows.append({
+            "Request ID": r.request_id,
+            "Prompt Type": r.prompt_type,
+            "Success": r.success,
+            "Latency (ms)": r.latency_ms,
+            "Input Tok": r.estimated_input_tokens,
+            "Output Tok": r.estimated_output_tokens,
+            "Error": r.error or "—",
+        })
+    df = pd.DataFrame(rows)
+    st.write("**Request Results:**")
+    st.dataframe(df, use_container_width=True)
+
+    # Download buttons
+    st.download_button(
+        label="Download Benchmark JSON",
+        data=json.dumps(benchmark.model_dump(mode="json"), indent=2),
+        file_name="amd_benchmark_results.json",
+        mime="application/json",
+    )
+
+    # Check for markdown report
+    report_path = Path("reports/amd_benchmark_report.md")
+    if report_path.exists():
+        with open(report_path, "r", encoding="utf-8") as f:
+            report_md = f.read()
+        st.download_button(
+            label="Download Benchmark Report (MD)",
+            data=report_md,
+            file_name="amd_benchmark_report.md",
+            mime="text/markdown",
+        )
+
+    # Evidence claims / limitations
+    evidence = build_evidence_pack(benchmark)
+    if verified:
+        st.markdown("### AMD Evidence Claims")
+        for claim in evidence.amd_claims:
+            st.write(f"- {claim}")
+    else:
+        st.markdown("### Limitations")
+        for lim in evidence.limitations:
+            st.write(f"- {lim}")
+        st.markdown("### Recommended Next Steps")
+        for step in evidence.recommended_next_steps:
+            st.write(f"- {step}")
 
 
 def render_final_report(report: AgentRunResult):

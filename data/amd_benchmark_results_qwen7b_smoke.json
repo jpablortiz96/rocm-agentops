@@ -1,0 +1,76 @@
+{
+  "run_id": "amd-bench-9290c7c1f88c",
+  "timestamp": "2026-05-04T21:21:42.628752Z",
+  "endpoint_base_url": "http://localhost:8000/v1",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "mock_mode": false,
+  "total_requests": 5,
+  "successful_requests": 5,
+  "failed_requests": 0,
+  "concurrency_levels": [
+    1
+  ],
+  "avg_latency_ms": 1324.23,
+  "p50_latency_ms": 1586.24,
+  "p95_latency_ms": 1960.89,
+  "estimated_total_tokens": 1968,
+  "estimated_tokens_per_second": 297.03,
+  "benchmark_duration_seconds": 6.63,
+  "notes": [
+    "Benchmark run against OpenAI-compatible endpoint.",
+    "Tested concurrency levels: [1]."
+  ],
+  "request_results": [
+    {
+      "request_id": "amd-bench-9290c7c1f88c-planner-0",
+      "prompt_type": "planner",
+      "success": true,
+      "latency_ms": 2015.88,
+      "estimated_input_tokens": 84,
+      "estimated_output_tokens": 436,
+      "estimated_total_tokens": 520,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-9290c7c1f88c-critic-1",
+      "prompt_type": "critic",
+      "success": true,
+      "latency_ms": 715.7,
+      "estimated_input_tokens": 191,
+      "estimated_output_tokens": 76,
+      "estimated_total_tokens": 267,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-9290c7c1f88c-optimizer-2",
+      "prompt_type": "optimizer",
+      "success": true,
+      "latency_ms": 1740.91,
+      "estimated_input_tokens": 146,
+      "estimated_output_tokens": 372,
+      "estimated_total_tokens": 518,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-9290c7c1f88c-rocm_advisor-3",
+      "prompt_type": "rocm_advisor",
+      "success": true,
+      "latency_ms": 1586.24,
+      "estimated_input_tokens": 102,
+      "estimated_output_tokens": 402,
+      "estimated_total_tokens": 504,
+      "error": null
+    },
+    {
+      "request_id": "amd-bench-9290c7c1f88c-reporter-4",
+      "prompt_type": "reporter",
+      "success": true,
+      "latency_ms": 562.43,
+      "estimated_input_tokens": 80,
+      "estimated_output_tokens": 79,
+      "estimated_total_tokens": 159,
+      "error": null
+    }
+  ],
+  "benchmark_verified": true
+}

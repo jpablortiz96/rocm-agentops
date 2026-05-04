@@ -5,10 +5,12 @@ from pathlib import Path
 
 import streamlit as st
 
+from core.benchmarking import load_benchmark_results
 from core.config import config
 from core.schemas import Incident
 from ui.components import (
     render_agent_review,
+    render_amd_live_evidence,
     render_baseline_comparison,
     render_final_report,
     render_header,
@@ -94,9 +96,12 @@ def main():
 
         st.success("Workflow complete!")
 
-        # New tab order: Triage, Agent Review, Trace, Optimizations, ROCm Readiness, Final Report
-        tab_triage, tab_agent_review, tab_trace, tab_opt, tab_rocm, tab_report = st.tabs(
-            ["Triage", "Agent Review", "Trace", "Optimizations", "ROCm Readiness", "Final Report"]
+        # Load AMD benchmark results independently of workflow run
+        benchmark_summary = load_benchmark_results("data/amd_benchmark_results.json")
+
+        # Tab order: Triage, Agent Review, Trace, Optimizations, ROCm Readiness, AMD Live Evidence, Final Report
+        tab_triage, tab_agent_review, tab_trace, tab_opt, tab_rocm, tab_amd, tab_report = st.tabs(
+            ["Triage", "Agent Review", "Trace", "Optimizations", "ROCm Readiness", "AMD Live Evidence", "Final Report"]
         )
 
         with tab_triage:
@@ -116,6 +121,9 @@ def main():
         with tab_rocm:
             if report.rocm_report:
                 render_rocm_report(report.rocm_report)
+
+        with tab_amd:
+            render_amd_live_evidence(benchmark_summary)
 
         with tab_report:
             render_final_report(report)

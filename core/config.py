@@ -32,7 +32,7 @@ class Config:
 
     @classmethod
     def is_mock(cls) -> bool:
-        return cls.LLM_MOCK_MODE or not cls.LLM_API_KEY
+        return cls.LLM_MOCK_MODE
 
 
 config = Config()

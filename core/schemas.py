@@ -125,6 +125,7 @@ class OptimizationRecommendation(BaseModel):
     complexity: str = ""
     estimated_impact: str = ""  # high, medium, low
     action_items: List[str] = Field(default_factory=list)
+    rationale: str = ""  # LLM narrative added without replacing structured content
 
 
 class ROCmReadinessReport(BaseModel):

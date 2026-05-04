@@ -8,7 +8,11 @@ from core.tracing import TraceBuilder
 
 
 class ROCmAdvisorAgent:
-    """Advises on ROCm/AMD compatibility and optimizations."""
+    """Advises on ROCm/AMD compatibility and optimizations.
+
+    Policy: structured output is always deterministic and factually curated.
+    LLM narrative may be appended to notes, but never replaces structured fields.
+    """
 
     SYSTEM_PROMPT = (
         "You are an AMD ROCm AI infrastructure advisor. Explain when AMD Developer Cloud, "
@@ -63,7 +67,11 @@ class ROCmAdvisorAgent:
         return report
 
     def advise_batch(self, incidents: List[Incident]) -> ROCmReadinessReport:
-        """Generate ROCm readiness advice based on incident batch."""
+        """Generate ROCm readiness advice based on incident batch.
+
+        Returns a factually curated report. LLM output is appended to notes
+        but never replaces structured fields like optimizations or limitations.
+        """
         inference_incidents = [i for i in incidents if i.system == "inference"]
         if not inference_incidents:
             return ROCmReadinessReport(
@@ -83,11 +91,11 @@ class ROCmAdvisorAgent:
             if any(k in f"{i.title} {i.description}".lower() for k in rocm_keywords)
         ]
 
-        # Deterministic fallback report
-        fallback_report = ROCmReadinessReport(
+        # Curated, factually static report
+        report = ROCmReadinessReport(
             summary=(
                 f"{len(relevant)} inference incident(s) relate to AMD/ROCm stack. "
-                "Recommend immediate GPU profiling and kernel optimization."
+                "Recommend GPU profiling and kernel optimization."
             ),
             gpu_relevant_steps=[i.id for i in relevant],
             rocm_optimizations=[
@@ -106,17 +114,20 @@ class ROCmAdvisorAgent:
                 "ROCm 6.1+ required for best Flash Attention support",
                 "Some Triton kernels may need manual tuning on MI300X",
                 "Docker base image must use rocm/pytorch:latest",
-                "Not all proprietary models are portable; open-source models (Qwen, Llama, Mistral) are preferred",
+                "Not all proprietary models are portable; open-source models are preferred",
             ],
             model_compatible=True,
             gpu_recommendation="MI300X",
             kernel_optimizations=["hipBLASLt", "MIOpen", "RCCL"],
             quantization_suggestion="FP8 / INT8 via AMD-quant",
             notes=[
-                "AMD Developer Cloud provides MI300X instances for testing and benchmarking",
-                "ROCm 6.1+ recommended for best Flash Attention support",
-                "Ensure docker image uses rocm/pytorch base",
-                "vLLM on ROCm supports Qwen, Llama, Mistral families with competitive throughput",
+                "AMD Developer Cloud provides cloud access to AMD GPUs for AI workloads",
+                "ROCm is AMD's open software stack for GPU computing",
+                "MI300X is relevant for high-throughput inference and large model serving",
+                "vLLM provides OpenAI-compatible serving and batching for LLM inference",
+                "Qwen models are from Alibaba; Llama models are from Meta; Mistral models are from Mistral AI",
+                "Deterministic scoring does not need GPU",
+                "LLM narrative generation, batching, and high-throughput serving are the GPU-relevant parts",
             ],
         )
 
@@ -130,19 +141,9 @@ class ROCmAdvisorAgent:
         result = self.llm.chat(self.SYSTEM_PROMPT, user_prompt)
         self.last_llm_meta = result
 
-        if result["used_llm"]:
-            return ROCmReadinessReport(
-                summary="LLM-generated ROCm readiness advice.",
-                gpu_relevant_steps=[i.id for i in relevant],
-                rocm_optimizations=[result["content"]],
-                batching_opportunities=["vLLM continuous batching"],
-                estimated_impact="medium",
-                limitations=["Review LLM output for accuracy"],
-                model_compatible=True,
-                gpu_recommendation="MI300X",
-                kernel_optimizations=["hipBLASLt", "MIOpen", "RCCL"],
-                quantization_suggestion="FP8 / INT8 via AMD-quant",
-                notes=[result["content"]],
-            )
+        # If real LLM was used, append its narrative to notes without replacing
+        # any structured field.
+        if result["used_llm"] and result["content"]:
+            report.notes.append(f"LLM narrative: {result['content']}")
 
-        return fallback_report
+        return report

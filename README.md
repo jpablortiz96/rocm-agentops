@@ -74,6 +74,29 @@ rocm-agentops/
 - **Downloadable Reports** (Markdown + JSON)
 - **Mock LLM Mode** for zero-dependency demos
 
+## AMD Live Benchmark Integration
+
+The app includes scripts to benchmark against an AMD Developer Cloud OpenAI-compatible endpoint.
+
+```bash
+# 1. Health-check the endpoint
+python scripts/health_check_endpoint.py --base-url http://YOUR_AMD_ENDPOINT:8000/v1
+
+# 2. Run the benchmark
+python scripts/run_amd_benchmark.py \
+  --base-url http://YOUR_AMD_ENDPOINT:8000/v1 \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --concurrency 1 2 4 \
+  --repeat 3
+
+# 3. Generate evidence pack markdown
+python scripts/generate_evidence_pack.py \
+  --input data/amd_benchmark_results.json \
+  --output reports/amd_evidence_pack.md
+```
+
+After running the benchmark, reload the Streamlit app to see metrics in the **AMD Live Evidence** tab.
+
 ## Deployment
 
 The app is deployable to **Hugging Face Spaces** using the standard Streamlit Space template.
