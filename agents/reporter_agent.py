@@ -13,7 +13,7 @@ class ReporterAgent:
     """Builds the final downloadable report."""
 
     SYSTEM_PROMPT = (
-        "You are a technical product analyst writing an audit report for hackathon judges. "
+        "You are a technical product analyst writing an operational audit report. "
         "Be clear, honest, concise, and do not overclaim production deployment."
     )
 

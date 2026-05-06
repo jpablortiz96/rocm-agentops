@@ -1,0 +1,38 @@
+{
+  "rules": [
+    {
+      "policy_id": "POL-001",
+      "name": "Security Missing Evidence Requires Human Review",
+      "description": "Security incidents with missing evidence must be escalated to human review.",
+      "enforcement": "human_review"
+    },
+    {
+      "policy_id": "POL-002",
+      "name": "Critical Priority Pages On-Call",
+      "description": "Incidents with priority_score >= 85 must page the on-call owner.",
+      "enforcement": "page_oncall"
+    },
+    {
+      "policy_id": "POL-003",
+      "name": "Hallucination Risk Requires Human Review",
+      "description": "Incidents flagged with hallucination risk must be human reviewed.",
+      "enforcement": "human_review"
+    },
+    {
+      "policy_id": "POL-004",
+      "name": "p95 SLA Threshold",
+      "description": "Benchmark p95 latency threshold is 2500 ms.",
+      "enforcement": "sla_threshold"
+    },
+    {
+      "policy_id": "POL-005",
+      "name": "Minimum Trust For Autonomous Action",
+      "description": "Autonomous action requires trust score >= 60.",
+      "enforcement": "trust_threshold"
+    }
+  ],
+  "thresholds": {
+    "p95_latency_ms": 2500,
+    "minimum_trust_score_autonomous_action": 60
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "payments": {
+    "owner_name": "Payments On-Call",
+    "owner_email": "payments-oncall@example.com",
+    "slack_channel": "#payments-incidents"
+  },
+  "database": {
+    "owner_name": "Database Reliability",
+    "owner_email": "dbre@example.com",
+    "slack_channel": "#database-ops"
+  },
+  "security": {
+    "owner_name": "Security Incident Commander",
+    "owner_email": "security-incident@example.com",
+    "slack_channel": "#security-incidents"
+  },
+  "inference": {
+    "owner_name": "AI Inference Platform",
+    "owner_email": "ai-platform@example.com",
+    "slack_channel": "#ai-inference"
+  },
+  "api": {
+    "owner_name": "API Platform",
+    "owner_email": "api-oncall@example.com",
+    "slack_channel": "#api-platform"
+  },
+  "frontend": {
+    "owner_name": "Frontend On-Call",
+    "owner_email": "frontend-oncall@example.com",
+    "slack_channel": "#frontend"
+  },
+  "data_pipeline": {
+    "owner_name": "Data Platform",
+    "owner_email": "data-platform@example.com",
+    "slack_channel": "#data-platform"
+  },
+  "authentication": {
+    "owner_name": "Identity Platform",
+    "owner_email": "identity-oncall@example.com",
+    "slack_channel": "#identity"
+  },
+  "deployment": {
+    "owner_name": "Release Engineering",
+    "owner_email": "release-eng@example.com",
+    "slack_channel": "#release-eng"
+  },
+  "customer_support": {
+    "owner_name": "Customer Operations",
+    "owner_email": "customer-ops@example.com",
+    "slack_channel": "#customer-ops"
+  }
+}

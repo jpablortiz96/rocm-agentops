@@ -85,18 +85,24 @@ class ROCmAdvisorAgent:
                 gpu_recommendation="MI300X",
             )
 
-        rocm_keywords = ["mi300x", "rocm", "triton", "gpu", "thermal", "throughput"]
-        relevant = [
-            i for i in inference_incidents
-            if any(k in f"{i.title} {i.description}".lower() for k in rocm_keywords)
-        ]
+        relevant = [incident for incident in inference_incidents if _is_rocm_relevant_incident(incident)]
+        live_relevant = [incident for incident in relevant if incident.source == "amd_live_signals"]
+        if live_relevant:
+            summary = (
+                f"{len(live_relevant)} live inference incident"
+                f"{'' if len(live_relevant) == 1 else 's'} "
+                f"{'relates' if len(live_relevant) == 1 else 'relate'} to AMD/vLLM endpoint performance. "
+                "Recommend GPU profiling, latency analysis, and batching optimization."
+            )
+        else:
+            summary = (
+                f"{len(relevant)} inference incident(s) relate to AMD/ROCm stack. "
+                "Recommend GPU profiling and kernel optimization."
+            )
 
         # Curated, factually static report
         report = ROCmReadinessReport(
-            summary=(
-                f"{len(relevant)} inference incident(s) relate to AMD/ROCm stack. "
-                "Recommend GPU profiling and kernel optimization."
-            ),
+            summary=summary,
             gpu_relevant_steps=[i.id for i in relevant],
             rocm_optimizations=[
                 "Enable hipBLASLt for fused GEMM operations on MI300X",
@@ -147,3 +153,37 @@ class ROCmAdvisorAgent:
             report.notes.append(f"LLM narrative: {result['content']}")
 
         return report
+
+
+def _is_rocm_relevant_incident(incident: Incident) -> bool:
+    if incident.system != "inference":
+        return False
+
+    combined_text = " ".join(
+        [
+            incident.title,
+            incident.description,
+            incident.source,
+            *incident.evidence,
+        ]
+    ).lower()
+    rocm_keywords = [
+        "mi300x",
+        "rocm",
+        "triton",
+        "gpu",
+        "thermal",
+        "throughput",
+        "qwen",
+        "vllm",
+        "endpoint",
+        "latency",
+        "p95",
+        "amd",
+        "benchmark",
+    ]
+
+    if incident.source == "amd_live_signals":
+        return any(keyword in combined_text for keyword in rocm_keywords)
+
+    return any(keyword in combined_text for keyword in rocm_keywords[:6])

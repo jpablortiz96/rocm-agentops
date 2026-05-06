@@ -14,7 +14,7 @@ class CriticAgent:
     SYSTEM_PROMPT = (
         "You are an incident review critic. Identify risks, missing evidence, "
         "low-trust high-priority cases, hallucination risks, security risks, and human review needs. "
-        "Be concise and judge-readable."
+        "Be concise and operator-readable."
     )
 
     def __init__(self, llm_client: LLMClient = llm):
@@ -74,7 +74,7 @@ class CriticAgent:
         return result
 
     def review_batch(self, triage_decisions: List[TriageDecision]) -> str:
-        """Return judge-readable critique of the top incidents."""
+        """Return operator-readable critique of the top incidents."""
         if not triage_decisions:
             return "No incidents to review."
 

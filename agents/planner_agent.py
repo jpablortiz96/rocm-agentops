@@ -51,7 +51,7 @@ class PlannerAgent:
         return result["content"]
 
     def generate_plan_text(self, incident_count: int) -> str:
-        """Return a judge-readable agentic plan."""
+        """Return an operator-readable agentic plan."""
         fallback = (
             "**AgentOps Execution Plan**\n\n"
             "1. Validate incident schema and required fields.\n"

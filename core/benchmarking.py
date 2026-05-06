@@ -4,7 +4,7 @@ import json
 import statistics
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from core.benchmark_schemas import AmdBenchmarkSummary, AmdEvidencePack
 
@@ -41,6 +41,27 @@ def load_benchmark_results(path: str) -> Optional[AmdBenchmarkSummary]:
         return None
 
 
+def load_preferred_benchmark_results(
+    primary_path: str = "data/amd_benchmark_results.json",
+    example_path: str = "data/amd_benchmark_results.example.json",
+) -> Optional[AmdBenchmarkSummary]:
+    """Load the submitted benchmark artifact, or fall back to the bundled example."""
+    primary = load_benchmark_results(primary_path)
+    if primary is not None:
+        primary.artifact_origin = "submitted"
+        return primary
+
+    example = load_benchmark_results(example_path)
+    if example is not None:
+        example.artifact_origin = "example"
+        note = "Loaded from the bundled example benchmark artifact."
+        if note not in example.notes:
+            example.notes.append(note)
+        return example
+
+    return None
+
+
 def save_benchmark_results(summary: AmdBenchmarkSummary, path: str) -> None:
     """Serialize benchmark results to JSON."""
     p = Path(path)
@@ -49,9 +70,10 @@ def save_benchmark_results(summary: AmdBenchmarkSummary, path: str) -> None:
         json.dump(summary.model_dump(mode="json"), f, indent=2)
 
 
-def build_evidence_pack(summary: AmdBenchmarkSummary) -> AmdEvidencePack:
+def build_evidence_pack(summary: AmdBenchmarkSummary | dict[str, Any]) -> AmdEvidencePack:
     """Generate claims, limitations, and next steps from a benchmark summary."""
-    verified = summary.successful_requests > 0
+    summary_model = _coerce_benchmark_summary(summary)
+    verified = summary_model.successful_requests > 0
 
     if verified:
         claims = [
@@ -60,11 +82,14 @@ def build_evidence_pack(summary: AmdBenchmarkSummary) -> AmdEvidencePack:
             "Deterministic scoring remains local and does not consume GPU.",
             "LLM narrative steps can be batched and accelerated through GPU-backed serving.",
         ]
-        if summary.avg_latency_ms < 500:
+        if summary_model.avg_latency_ms < 500:
             claims.append(
                 "Average latency is under 500ms, suitable for real-time agent assistance."
             )
-        if summary.successful_requests == summary.total_requests and summary.total_requests > 0:
+        if (
+            summary_model.successful_requests == summary_model.total_requests
+            and summary_model.total_requests > 0
+        ):
             claims.append("All benchmark requests succeeded with zero failures.")
     else:
         claims = []
@@ -96,11 +121,22 @@ def build_evidence_pack(summary: AmdBenchmarkSummary) -> AmdEvidencePack:
         ]
 
     return AmdEvidencePack(
-        summary=summary,
+        summary=summary_model.model_dump(mode="json"),
         amd_claims=claims,
         limitations=limitations,
         recommended_next_steps=next_steps,
     )
+
+
+def _coerce_benchmark_summary(
+    summary: AmdBenchmarkSummary | dict[str, Any],
+) -> AmdBenchmarkSummary:
+    """Normalize benchmark inputs across Streamlit reruns and module reloads."""
+    if isinstance(summary, AmdBenchmarkSummary):
+        return summary
+    if hasattr(summary, "model_dump"):
+        return AmdBenchmarkSummary.model_validate(summary.model_dump(mode="json"))
+    return AmdBenchmarkSummary.model_validate(summary)
 
 
 def generate_benchmark_markdown(evidence_pack: AmdEvidencePack) -> str:

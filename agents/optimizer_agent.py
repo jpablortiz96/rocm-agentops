@@ -96,7 +96,7 @@ class OptimizerAgent:
         self,
         triage_decisions: List[TriageDecision],
     ) -> List[OptimizationRecommendation]:
-        """Produce 5 structured optimization recommendations for AgentOps demo.
+        """Produce 5 structured optimization recommendations for the AgentOps workflow.
 
         The 5 recommendations are deterministic and curated. If a real LLM is used,
         its output is appended as a rationale on the first recommendation without

@@ -35,6 +35,7 @@ class AmdBenchmarkSummary(BaseModel):
     notes: List[str] = Field(default_factory=list)
     request_results: List[BenchmarkRequestResult] = Field(default_factory=list)
     benchmark_verified: bool = False
+    artifact_origin: str = "submitted"
 
 
 class AmdEvidencePack(BaseModel):
