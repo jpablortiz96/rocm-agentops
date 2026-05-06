@@ -1,25 +1,3 @@
----
-title: ROCm AgentOps Command Center
-emoji: ⚡
-colorFrom: red
-colorTo: gray
-sdk: docker
-app_port: 8501
-pinned: false
-license: mit
-short_description: AgentOps command center for trusted routing, auditability, and AMD/vLLM workflow evidence.
-tags:
-  - agentops
-  - rocm
-  - amd
-  - streamlit
-  - vllm
-  - qwen
-  - ai-agents
-  - observability
-  - incident-response
----
-
 # ROCm AgentOps Command Center
 
 An AgentOps command center that scores, routes, audits, and optimizes critical AI workflows on AMD GPUs.
@@ -33,6 +11,8 @@ An AgentOps command center that scores, routes, audits, and optimizes critical A
 ![OpenAI-compatible endpoint](https://img.shields.io/badge/OpenAI--compatible-endpoint-0EA5E9?style=flat)
 
 ![ROCm AgentOps Architecture](docs/assets/architecture.png)
+
+If you are generating a polished architecture visual for launch materials, place it at `docs/assets/architecture.png`.
 
 ## Product Overview
 
@@ -193,15 +173,12 @@ Operational policy lives in `data/policies.json`. Example rules include:
 
 The policy engine records which rules were loaded, which ones triggered, and how they influenced routing or escalation.
 
-## Quickstart
-
-```bash
-python -m venv venv
-```
+## Running Locally
 
 Windows PowerShell:
 
 ```powershell
+python -m venv venv
 venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 streamlit run app.py
@@ -210,24 +187,13 @@ streamlit run app.py
 macOS / Linux:
 
 ```bash
+python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
 The default public-safe mode uses mock narrative generation, the demo dataset, and example benchmark evidence when available. That keeps the app usable without a live endpoint while preserving the full Command Center flow.
-
-## Running Locally
-
-The Quickstart section above is the recommended local path. For environment variables, start from `.env.example` and keep mock mode enabled until a real endpoint is available.
-
-## Runtime Modes
-
-- `Mock mode`: deterministic scoring stays active while LLM narrative falls back to mock responses.
-- `Real endpoint mode`: planner, critic, optimizer, ROCm advisor, and report narrative can call a live OpenAI-compatible endpoint.
-- `Fallback behavior`: if the live endpoint fails, deterministic scoring still completes and narrative surfaces can fall back safely.
-- `Empty API key`: supported for local vLLM endpoints that do not require authentication.
-- `Deterministic scoring`: unchanged across all runtime modes.
 
 ## Connecting to AMD/vLLM
 
@@ -259,7 +225,7 @@ python scripts/generate_evidence_pack.py --input "data/amd_benchmark_results.jso
 
 The repository includes `data/amd_benchmark_results.example.json` as a public example artifact. Replace the local benchmark file with your own run when refreshing evidence.
 
-## Capturing ROCm/GPU Telemetry
+## ROCm/GPU Telemetry
 
 Run this on the AMD instance or inside the ROCm container:
 
@@ -273,29 +239,15 @@ Copy the resulting file into the repository working directory:
 scp root@YOUR_HOST:/root/amd_runtime_signals.json data/amd_runtime_signals.json
 ```
 
-## Deploying on Hugging Face Spaces
+## Deploying to Hugging Face
 
-1. Create a new Hugging Face Space.
-2. Select the Docker SDK.
-3. Push this repository to the Space.
-4. Hugging Face reads the YAML front matter at the top of this README.
-5. The container runs Streamlit on port `8501`.
-6. Add secrets only if you want to connect the public Space to a real endpoint.
+For Hugging Face Spaces, use `README_HF.md` as the Space README because Spaces require YAML configuration at the top of `README.md`.
 
-Optional Space secrets:
+The repository already includes:
 
-```text
-USE_MOCK_LLM=false
-LLM_BASE_URL=https://YOUR_PUBLIC_AMD_VLLM_ENDPOINT/v1
-LLM_MODEL=Qwen/Qwen2.5-7B-Instruct
-LLM_API_KEY=
-```
-
-Important notes:
-
-- localhost endpoints do not work from Hugging Face Spaces unless the endpoint is running inside the same container
-- for AMD Developer Cloud, use a public endpoint, VPN/proxy, or run the live benchmark locally and upload artifacts
-- for public previews, mock mode and example evidence are acceptable as long as they are clearly labeled
+- a `Dockerfile` that runs Streamlit on port `8501`
+- HF-safe defaults with mock narrative mode enabled
+- support for optional public AMD/vLLM endpoints through Space secrets
 
 See [docs/deployment.md](docs/deployment.md) for the full deployment guide.
 
@@ -332,6 +284,7 @@ Placeholder asset paths:
 rocm-agentops/
 |-- app.py
 |-- README.md
+|-- README_HF.md
 |-- Dockerfile
 |-- requirements.txt
 |-- .env.example

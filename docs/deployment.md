@@ -107,7 +107,7 @@ This keeps the Space functional without requiring a reachable localhost endpoint
 1. Create a new Hugging Face Space.
 2. Select `Docker` as the SDK.
 3. Push this repository to the Space.
-4. Hugging Face reads the YAML block at the top of `README.md`.
+4. Copy `README_HF.md` into `README.md` in the Space repo so Hugging Face can read the required YAML header.
 5. The container starts Streamlit on port `8501`.
 
 ### Optional Space secrets
